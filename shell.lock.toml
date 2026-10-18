@@ -1,0 +1,21 @@
+# downwell override for [lock], written by tools/shell-overrides.py.
+# A section override REPLACES the whole section, so every generated key is
+# restated; hex values are frozen copies of colors.toml - re-run the tool
+# after any palette change.
+# Lock screen password input. background/background-alpha control the
+# centered input field card; border/border-active/border-error cycle
+# through idle, typing/authenticating, and wrong-password states.
+# border-alpha applies to all three border states (they are mutually
+# exclusive in time).
+background       = "#050505"
+background-alpha = 0.9
+text             = "#e9e9e9"
+placeholder      = "#9b9b9b"
+text-error       = "#ff6b6b"
+border           = "#4d4d4d"
+border-active    = "hyprland.active-border"
+border-error     = "#ff6b6b"
+border-alpha     = 1.0
+# selection is the text-selection tint inside the input field.
+selection        = "#f90000"
+selection-alpha  = 0.45

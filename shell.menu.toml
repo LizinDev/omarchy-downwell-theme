@@ -1,0 +1,20 @@
+# downwell override for [menu], written by tools/shell-overrides.py.
+# A section override REPLACES the whole section, so every generated key is
+# restated; hex values are frozen copies of colors.toml - re-run the tool
+# after any palette change.
+# Cards, rows, and selected-row treatment. Alpha companions (where present)
+# go from 0 (invisible) to 1 (opaque). scrim is the full-screen dim layer
+# behind the card. Clipboard and emojis inherit these tokens.
+background                = "#050505"
+background-alpha          = 1.0
+text                      = "#e9e9e9"
+border                    = "hyprland.active-border-foreground"
+border-alpha              = 1.0
+scrim                     = "#000000"
+scrim-alpha               = 0.6
+selected-background       = "#f90000"
+selected-background-alpha = 0.14
+selected-text             = "#f90000"
+selected-border           = "#f90000"
+selected-border-alpha     = 1.0
+selected-border-width     = 2

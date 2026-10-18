@@ -1,0 +1,11 @@
+# downwell override for [tooltip], written by tools/shell-overrides.py.
+# A section override REPLACES the whole section, so every generated key is
+# restated; hex values are frozen copies of colors.toml - re-run the tool
+# after any palette change.
+# Hover tooltips across the bar, panels, and buttons. background-alpha of
+# 0.97 mirrors the legacy hard-coded tooltip opacity.
+background       = "#050505"
+background-alpha = 1.0
+text             = "#e9e9e9"
+border           = "hyprland.active-border-foreground"
+border-alpha     = 1.0

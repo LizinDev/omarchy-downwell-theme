@@ -1,0 +1,10 @@
+*.bak
+*~
+.DS_Store
+__pycache__/
+
+# Downwell's own art (and anything built from it) is not ours to publish: these
+# stay local. 4-dither.png is generated from colors.toml and ships.
+backgrounds/1-clouds.png
+backgrounds/2-well.png
+backgrounds/3-title.png
