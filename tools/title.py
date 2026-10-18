@@ -12,5 +12,6 @@ for dy, col in ((2, ACCENT), (0, FG)):
     layer = np.zeros_like(title)
     layer[white] = (*col, 255)
     c.paste(layer, 240 - ox, 84 - oy + dy)
-c.blit('sprPlayerAir', 240, 186, 1)
+# the hero from the clouds wallpaper (sprPlayerAir frame 4), without its balloon
+c.blit('sprPlayerAir', 240, 186, 4)
 c.save(sys.argv[1], 4)
