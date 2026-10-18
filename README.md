@@ -56,24 +56,29 @@ accent stays at 100% and the ANSI colors sit a step below it.
 ## Backgrounds
 
 Only `4-dither.png` ships: the palette's three bands joined by ordered dither, generated
-from `colors.toml`. The other three are Downwell's own art and stay local:
+from `colors.toml`. The other six are built from Downwell's own art and stay local. Every
+one uses exactly the theme's three colors:
 
 | | |
 |---|---|
-| `1-clouds.png` | the cloud sea and heart balloon, repainted in this palette |
+| `1-clouds.png` | the cloud sea and heart balloon, repainted in this palette's three colors |
 | `2-well.png` | a well shaft built from the game's tiles, enemies, gems and HUD |
 | `3-title.png` | the DOWNWELL logo over the opening backdrop |
+| `5-bros.png` | Super Welltaro Bros.: World 1-1 with gem ? blocks, a slime Goomba, a turtle Koopa and the stone well as the warp pipe |
+| `6-terra.png` | Terrawell: a Terraria-style cross-section with the bucket well, the shopkeeper as the Guide, a torchlit tunnel, gem ore and a hotbar |
+| `7-isaac.png` | The Welling of Isaac: a basement room with four doors, bubble tears at a fly swarm, a heart pedestal, a tinted gem rock and the minimap |
 
 With your own copy of the game (Steam) and the Omarchywell project checked out at
 `~/Projects/Downwell`, rebuild them from `colors.toml`:
 
 ```bash
-tools/build-backgrounds.sh <nikaido-clouds-wallpaper.png>   # omit the argument to skip 1-clouds
+tools/build-backgrounds.sh ~/Projects/Downwell/Wallpaper.png   # omit the argument to skip 1-clouds
 ```
 
 The scripts read the game's sprites read-only through Omarchywell's
 `tools/game_sprites.py`, swap black/white/red for this theme's background, white and
-accent, and scale them 4× on an integer pixel grid.
+accent (the game's secondary blues and greens fold into the accent or the white), and
+scale them 4× on an integer pixel grid.
 
 ## Caveats
 

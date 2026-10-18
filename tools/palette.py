@@ -19,4 +19,3 @@ KEYS = _keys()
 BG = KEYS['background']
 FG = KEYS['bright_foreground']
 ACCENT = KEYS['accent']
-BLUE = KEYS['blue']

@@ -14,4 +14,7 @@ fi
 build well.py 2-well.png
 build title.py 3-title.png
 build dither.py 4-dither.png
+build bros.py 5-bros.png
+build terra.py 6-terra.png
+build isaac.py 7-isaac.png
 ls -la "$theme/backgrounds"

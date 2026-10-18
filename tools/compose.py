@@ -16,19 +16,26 @@ g = GameSprites()
 _cache = {}
 
 
-def frame(name, i=0):
-    key = (name, i)
+def frame(name, i=0, second=None):
+    """A frame remapped to the theme's three colors. Downwell sprites use black,
+    white and red, plus a 'secondary' (blues, greens) that the game palettes
+    recolor; with only three colors to spend, `second` picks its role
+    (accent by default)."""
+    key = (name, i, second)
     if key not in _cache:
         f = g.frames(name)[i]
-        px = np.frombuffer(bytes(f['pixels']), np.uint8).reshape(f['h'], f['w'], 4).copy()
-        out = np.zeros_like(px)
+        px = np.frombuffer(bytes(f['pixels']), np.uint8).reshape(f['h'], f['w'], 4).astype(int)
+        out = np.zeros(px.shape, np.uint8)
         on = px[..., 3] > 0
-        red = on & (px[..., 0] > 128) & (px[..., 1] < 128)
-        white = on & (px[..., 0] > 128) & (px[..., 1] > 128)
-        black = on & ~red & ~white
+        r, gr, b = px[..., 0], px[..., 1], px[..., 2]
+        black = on & (np.maximum(np.maximum(r, gr), b) < 80)
+        white = on & (np.minimum(np.minimum(r, gr), b) > 180)
+        red = on & ~black & ~white & (r > 150) & (gr < 100) & (b < 100)
+        other = on & ~black & ~white & ~red
         out[black] = (*BG, 255)
         out[white] = (*FG, 255)
         out[red] = (*ACCENT, 255)
+        out[other] = (*(second or ACCENT), 255)
         _cache[key] = (out, f['origin'])
     return _cache[key]
 
@@ -39,8 +46,11 @@ class Canvas:
         self.px = np.zeros((h, w, 3), np.uint8)
         self.px[:] = BG
 
-    def blit(self, name, x, y, i=0, flip=False, rot=0, vflip=False):
-        img, (ox, oy) = frame(name, i)
+    def blit(self, name, x, y, i=0, flip=False, rot=0, vflip=False, second=None, tint=None):
+        img, (ox, oy) = frame(name, i, second)
+        if tint:  # the whole silhouette in one color (shadows, cut-outs)
+            img = img.copy()
+            img[img[..., 3] > 0, :3] = tint
         h, w = img.shape[:2]
         if flip:
             img = img[:, ::-1]
@@ -81,19 +91,21 @@ def tiles(c, solid, sheet='sprTile1', ox=0, oy=0, special=None):
     corners = [(25, -1, -1), (24, 1, -1), (21, -1, 1), (20, 1, 1)]
     for r in range(-1, rows):
         for q in range(-1, cols):
-            if not solid(q, r) or solid(q, r) == 'hidden':
+            v = solid(q, r)
+            if not v or v == 'hidden':
                 continue
+            cell = v if isinstance(v, str) else sheet  # a cell may name its own sheet
             x, y = ox + q * 16 + 8, oy + r * 16 + 8
             if (q, r) in special:
-                c.blit(sheet, x, y, special[(q, r)])
+                c.blit(cell, x, y, special[(q, r)])
                 continue
             idx = (1 if solid(q, r - 1) else 0) + (2 if solid(q + 1, r) else 0) + \
                   (4 if solid(q, r + 1) else 0) + (8 if solid(q - 1, r) else 0)
-            c.blit(sheet, x, y, idx)
+            c.blit(cell, x, y, idx)
             if idx == 15:
                 for f, dq, dr in corners:
                     if not solid(q + dq, r + dr):
-                        c.blit(sheet, x, y, f)
+                        c.blit(cell, x, y, f)
 
 
 _fonts = {}
@@ -130,3 +142,33 @@ def text(c, s, x, y, color=FG, font='font0', shadow=None, align='left'):
                 c.paste(img, cx + gph['offset'], y + dy)
             cx += gph['shift']
     return width
+
+
+def bbox(name, i=0):
+    """Opaque extent of a frame relative to its origin: x0, y0, x1, y1."""
+    img, (ox, oy) = frame(name, i)
+    ys, xs = np.nonzero(img[..., 3])
+    return xs.min() - ox, ys.min() - oy, xs.max() - ox, ys.max() - oy
+
+
+def stand(c, name, x, ground, i=0, **kw):
+    """Blit so the frame's lowest opaque row rests on y = ground - 1."""
+    c.blit(name, x, ground - 1 - bbox(name, i)[3], i, **kw)
+
+
+def disc(c, cx, cy, r, color):
+    y, x = np.ogrid[:c.h, :c.w]
+    c.px[(x - cx) ** 2 + (y - cy) ** 2 <= r * r] = color
+
+
+def cloud(c, x, y, puffs, ink=FG):
+    """A flat-bottomed puff of circles (cx offset, cy offset, radius) relative
+    to x, y: field-colored inside with a one-pixel ink outline."""
+    yy, xx = np.ogrid[:c.h, :c.w]
+    inside = np.zeros((c.h, c.w), bool)
+    for dx, dy, r in puffs:
+        inside |= (xx - x - dx) ** 2 + (yy - y - dy) ** 2 <= r * r
+    inside &= yy <= y
+    edge = inside & ~(np.roll(inside, 1, 0) & np.roll(inside, -1, 0) & np.roll(inside, 1, 1) & np.roll(inside, -1, 1))
+    c.px[inside] = BG
+    c.px[edge] = ink
