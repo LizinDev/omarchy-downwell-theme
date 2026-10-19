@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Downwell Gunboots",
+  "description": "Companion of the Downwell Omarchy theme: a title-screen new tab page, a pause-menu popup, and scrollbars and selection in the palette.",
+  "version": "1.0.0",
+  "version_name": "unset",
+  "minimum_chrome_version": "120",
+  "permissions": ["storage", "alarms", "management", "topSites", "favicon", "search", "scripting", "notifications"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "sw.js", "type": "module" },
+  "chrome_url_overrides": { "newtab": "newtab.html" },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Downwell",
+    "default_icon": { "16": "art/icon-16.png", "32": "art/icon-32.png", "48": "art/icon-48.png" }
+  },
+  "icons": { "16": "art/icon-16.png", "32": "art/icon-32.png", "48": "art/icon-48.png", "128": "art/icon-128.png" }
+}

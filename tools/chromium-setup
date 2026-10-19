@@ -1,0 +1,97 @@
+#!/bin/bash
+# Wire this theme's Chromium build into Omarchy, once per machine.
+#
+#   tools/chromium-setup              install; asks for your password once
+#   tools/chromium-setup --no-root    install everything but the policy helper
+#   tools/chromium-setup remove       undo all of it
+#
+# Install:
+#   - builds chromium/ with tools/chromium.py if it is not there yet
+#   - copies it into the two folders Chromium loads, ~/.local/share/omarchy-chromium-theme/{theme,extras},
+#     and adds them to --load-extension in ~/.config/chromium-flags.conf
+#   - installs tools/chromium-hook as the theme-set hook 40-chromium-theme
+#   - installs browser-theme-policy-clear root-owned in /usr/local/bin, with a
+#     sudoers rule for exactly that command, so the hook can lift Omarchy's
+#     browser color policy without asking (the one step that needs sudo)
+#   - runs the hook for the current theme
+# Chromium picks it all up on its next start.
+
+set -euo pipefail
+
+here=$(cd "$(dirname "$0")" && pwd)
+theme=$(dirname "$here")
+DEST=$HOME/.local/share/omarchy-chromium-theme
+HOOK=$HOME/.config/omarchy/hooks/theme-set.d/40-chromium-theme
+FLAGS=$HOME/.config/chromium-flags.conf
+HELPER=/usr/local/bin/browser-theme-policy-clear
+SUDOERS=/etc/sudoers.d/browser-theme-policy-clear
+
+install_root() {
+  local rule
+  rule=$(mktemp)
+  {
+    echo "# Lets the Omarchy theme-set hook 40-chromium-theme lift the browser color"
+    echo "# policy for themes that ship a Chromium theme. No arguments are accepted."
+    echo "$USER ALL=(root) NOPASSWD: $HELPER \"\""
+  } >"$rule"
+  sudo visudo -cqf "$rule"
+  echo "Installing $HELPER and $SUDOERS (sudo)"
+  sudo install -m 0755 -o root -g root "$here/browser-theme-policy-clear" "$HELPER"
+  sudo install -m 0440 -o root -g root "$rule" "$SUDOERS"
+  rm -f "$rule"
+}
+
+remove() {
+  rm -f "$HOOK"
+  if [[ -f $FLAGS ]]; then
+    sed -i -E "s#,?$DEST/(theme|extras)##g; /^--load-extension=$/d" "$FLAGS"
+  fi
+  rm -rf "$DEST"
+  if [[ -e $HELPER || -e $SUDOERS ]]; then
+    echo "Removing $HELPER and $SUDOERS (sudo)"
+    sudo rm -f "$HELPER" "$SUDOERS"
+  fi
+  # put Omarchy's own browser color back
+  omarchy-theme-set-browser || true
+  echo "Removed. Restart Chromium to drop the extensions."
+}
+
+case ${1:-} in
+  remove)
+    remove
+    exit
+    ;;
+  --no-root | "") ;;
+  *)
+    sed -n '2,8p' "$0"
+    exit 2
+    ;;
+esac
+
+if [[ ! -f $theme/chromium/theme/manifest.json || ! -f $theme/chromium/extras/art/theme.json ]]; then
+  python3 -I "$here/chromium.py"
+fi
+
+# Seed the folders so the paths Chromium is given always hold an extension,
+# whichever theme is current.
+mkdir -p "$DEST/theme" "$DEST/extras"
+[[ -f $DEST/theme/manifest.json ]] || cp -a "$theme/chromium/theme/." "$DEST/theme/"
+[[ -f $DEST/extras/manifest.json ]] || cp -a "$theme/chromium/extras/." "$DEST/extras/"
+
+install -D -m 0755 "$here/chromium-hook" "$HOOK"
+echo "Installed theme-set hook: $HOOK"
+
+if [[ ${1:-} != --no-root ]]; then
+  install_root
+fi
+
+# Omarchy stages a theme's files when it is set; a build made since then is not
+# in the staged copy yet, so add it the way staging would.
+current=$(cat "$HOME/.local/state/omarchy/current/theme.name" 2>/dev/null || true)
+staged=$HOME/.local/state/omarchy/current/theme
+if [[ -n $current && -d $HOME/.config/omarchy/themes/$current/chromium && ! -d $staged/chromium ]]; then
+  cp -r "$HOME/.config/omarchy/themes/$current/chromium" "$staged/chromium"
+fi
+bash "$HOOK" "$current"
+echo "Folders: $DEST/{theme,extras}, in $FLAGS"
+echo "Restart Chromium (chrome://restart) to load them."

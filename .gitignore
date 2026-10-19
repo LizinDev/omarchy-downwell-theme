@@ -11,3 +11,9 @@ backgrounds/3-title.png
 backgrounds/5-bros.png
 backgrounds/6-terra.png
 backgrounds/7-isaac.png
+
+# The Chromium build (tools/chromium.py) is made of the game's art too. Only the
+# companion's code under chromium/extras is ours to publish.
+chromium/theme/
+chromium/extras/art/
+chromium/extras/state.json

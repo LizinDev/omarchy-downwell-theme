@@ -51,7 +51,8 @@ accent stays at 100% and the ANSI colors sit a step below it.
 | `backgrounds/` | see below |
 | `preview.png` | theme-switcher tile, a pixel-art palette specimen |
 | `unlock.png` | Plymouth boot splash and SDDM logo |
-| `tools/` | the scripts that build the backgrounds, previews and shell overrides |
+| `chromium/extras/` | the Chromium companion's code (its art and the theme are built, see below) |
+| `tools/` | the scripts that build the backgrounds, previews, shell overrides and the Chromium theme |
 
 ## Backgrounds
 
@@ -79,6 +80,55 @@ The scripts read the game's sprites read-only through Omarchywell's
 `tools/game_sprites.py`, swap black/white/red for this theme's background, white and
 accent (the game's secondary blues and greens fold into the accent or the white), and
 scale them 4× on an integer pixel grid.
+
+## Chromium
+
+`tools/chromium.py` builds a Chromium version of the theme into `chromium/`, from
+`colors.toml` and the game's own sprites (so, like most backgrounds, it stays local):
+
+- **`chromium/theme`**, a theme extension: the window in the game's black, the well's
+  rubble rim along the top of the tab strip with bats and spiders hanging from it past
+  the last tab, and a red edge on the selected tab, the way the game underlines what
+  is chosen. Chromium's own new tab page gets the title screen's backdrop.
+- **`chromium/extras`**, its companion "Downwell Gunboots":
+  - a new tab page drawn as the game's title screen, a still: the opening backdrop's
+    ledges with the hero dropping in, the logo, a clock, a search box, and your most
+    visited sites as a row of icons repainted in the palette's three colors, the chosen
+    one framed by the game's cursor corners. Keys: `1`–`8` open a shortcut, arrows and
+    `Enter` choose one, `/` or just typing searches.
+  - a toolbar popup drawn as the pause menu: sound (off by default), page
+    scrollbars and text selection in the red, repainted icons, 24-hour clock.
+  - scrollbars and selected text on every site in the red, while those are on.
+
+Everything is drawn in the game's font and sprites at a whole-number scale.
+
+### Setup
+
+Omarchy themes Chromium through a managed `BrowserThemeColor` policy, rewritten on
+every theme switch, and while that policy exists Chromium refuses theme extensions. So
+wiring this in takes one script, run once in a terminal:
+
+```bash
+python3 -I tools/chromium.py   # needs ~/Projects/Downwell and the Steam game
+tools/chromium-setup           # asks for your password once
+```
+
+It installs a theme-set hook (`40-chromium-theme`) that copies the current theme's
+`chromium/` build into `~/.local/share/omarchy-chromium-theme/{theme,extras}`, which it
+adds to `--load-extension` in `~/.config/chromium-flags.conf`. It also installs
+`/usr/local/bin/browser-theme-policy-clear`, root-owned, with a sudoers rule for exactly
+that command and no arguments. The hook uses it to delete Omarchy's `color.json` policy
+for themes that ship a Chromium build. On any other theme the companion goes to sleep,
+Omarchy's color policy stays, and the browser looks as Omarchy made it.
+`tools/chromium-setup remove` undoes all of it.
+
+Chromium reads a theme only when it starts. Switching from another Omarchy theme, or
+between Downwell and its sister theme, asks for a restart: the companion shows a `!`
+badge, a banner on the new tab page and a notification (`chrome://restart`).
+
+Two things a theme extension cannot reach: focus rings and the profile button keep
+Chromium's own blue (Chromium only derives those from a seed color, which themes do
+not set), and incognito windows ignore themes altogether.
 
 ## Caveats
 

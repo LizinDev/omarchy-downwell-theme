@@ -1,0 +1,114 @@
+#!/bin/bash
+# Omarchy theme-set hook: dress Chromium in the theme's Chromium build, if it
+# ships one. tools/chromium-setup installs it as
+# ~/.config/omarchy/hooks/theme-set.d/40-chromium-theme.
+#
+# A theme may carry chromium/theme (a theme extension) and chromium/extras (its
+# companion), built by its tools/chromium.py and staged by Omarchy with the rest
+# of the theme. Chromium loads both from fixed folders named in
+# ~/.config/chromium-flags.conf; this copies the current theme's build there and
+# tells the companion through state.json, which its pages and worker read. For
+# a theme without one, the companion goes to sleep and Omarchy's color stays.
+# Chromium reads a theme and a manifest only when it starts, so switching
+# between two themes that have a build asks for a restart (the companion says so).
+#
+# Omarchy writes a managed BrowserThemeColor policy on every theme set, and
+# while it exists Chromium refuses theme extensions. For themes with a Chromium
+# build it is lifted again by browser-theme-policy-clear, a root helper the
+# setup installs with a password-free sudoers rule.
+
+THEME_NAME=$1
+SRC=$HOME/.local/state/omarchy/current/theme/chromium
+DEST=$HOME/.local/share/omarchy-chromium-theme
+FLAGS=$HOME/.config/chromium-flags.conf
+CLEAR=/usr/local/bin/browser-theme-policy-clear
+
+[[ -f $DEST/extras/manifest.json ]] || exit 0   # not set up on this machine
+command -v jq >/dev/null || exit 0
+
+# Name both folders in the flags. Chromium keeps only the last --load-extension,
+# so they join Omarchy's line instead of adding one; `omarchy refresh chromium`
+# rewrites the file, and the next theme set puts them back.
+ensure_flags() {
+  local line want
+  [[ -f $FLAGS ]] || touch "$FLAGS"
+  line=$(grep -m1 -- '^--load-extension=' "$FLAGS")
+  if [[ -z $line ]]; then
+    echo "--load-extension=$DEST/theme,$DEST/extras" >>"$FLAGS"
+    return
+  fi
+  want=$line
+  for path in "$DEST/theme" "$DEST/extras"; do
+    [[ ,${want#--load-extension=}, == *,"$path",* ]] || want+=",$path"
+  done
+  [[ $want == "$line" ]] && return
+  awk -v old="$line" -v new="$want" '$0 == old && !done { print new; done = 1; next } { print }' "$FLAGS" >"$FLAGS.tmp" &&
+    mv "$FLAGS.tmp" "$FLAGS"
+}
+
+same_theme() {
+  [[ -f $DEST/theme/manifest.json ]] &&
+    [[ $(jq -S 'del(.version)' "$SRC/theme/manifest.json") == "$(jq -S 'del(.version)' "$DEST/theme/manifest.json")" ]] &&
+    diff -rq "$SRC/theme/images" "$DEST/theme/images" >/dev/null
+}
+
+refresh_policy() {
+  if pgrep -x chromium >/dev/null; then
+    chromium --refresh-platform-policy --no-startup-window &>/dev/null &
+  fi
+}
+
+ensure_flags
+
+active=false
+cleared=false
+if [[ -f $SRC/theme/manifest.json && -f $SRC/extras/manifest.json && -f $SRC/extras/art/theme.json ]]; then
+  active=true
+fi
+
+if $active; then
+  # A rebuild stamps a new version even when nothing changed; copying it would
+  # only ask for a restart. When the theme did change, also drop the pack
+  # Chromium caches in the folder, so the next start builds it from the files.
+  if ! same_theme; then
+    rsync -a --delete --exclude 'Cached Theme.pak' "$SRC/theme/" "$DEST/theme/"
+    rm -f "$DEST/theme/Cached Theme.pak"
+  fi
+  rsync -a --delete --exclude state.json --exclude manifest.json "$SRC/extras/" "$DEST/extras/"
+  manifest=$(jq . "$SRC/extras/manifest.json")
+  title=$(jq -r .title "$DEST/extras/art/theme.json")
+  if sudo -n "$CLEAR" 2>/dev/null; then
+    cleared=true
+    refresh_policy
+  elif [[ ! -e $DEST/.told-setup ]]; then
+    touch "$DEST/.told-setup"
+    omarchy-notification-send "Chromium theme needs one more step" \
+      "Run tools/chromium-setup from the $THEME_NAME theme to let Chromium wear it" 2>/dev/null
+  fi
+else
+  # asleep: no new tab page of its own, nothing tinted
+  manifest=$(jq 'del(.chrome_url_overrides)' "$DEST/extras/manifest.json")
+  title=$THEME_NAME
+fi
+
+stamp=$(
+  {
+    echo "$active $THEME_NAME $cleared"
+    jq -c 'del(.version_name)' <<<"$manifest"
+    cd "$DEST/extras" && find . -type f ! -name state.json ! -name manifest.json -exec sha1sum {} + | sort
+  } | sha1sum | cut -c1-12
+)
+
+# Chromium names an unpacked extension after the SHA-256 of its path.
+theme_id=$(printf %s "$DEST/theme" | sha256sum | cut -c1-32 | tr 0-9a-f a-p)
+theme_version=$(jq -r .version "$DEST/theme/manifest.json")
+
+# The manifest first and state.json last: state.json is what the companion
+# watches, so it never sees a stamp before the files it describes.
+jq --arg stamp "$stamp" '.version_name = $stamp' <<<"$manifest" >"$DEST/extras/manifest.json.tmp" &&
+  mv "$DEST/extras/manifest.json.tmp" "$DEST/extras/manifest.json"
+jq -n --argjson active "$active" --argjson cleared "$cleared" --arg theme "$THEME_NAME" --arg title "$title" \
+  --arg stamp "$stamp" --arg id "$theme_id" --arg version "$theme_version" \
+  '{active: $active, theme: $theme, title: $title, stamp: $stamp, themeId: $id, themeVersion: $version, policyCleared: $cleared}' \
+  >"$DEST/extras/state.json.tmp" &&
+  mv "$DEST/extras/state.json.tmp" "$DEST/extras/state.json"

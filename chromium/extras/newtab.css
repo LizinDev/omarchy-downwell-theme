@@ -1,0 +1,42 @@
+:root {
+  color-scheme: dark;
+  background: #000;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* The whole page is one canvas in art pixels, scaled up by a whole number. */
+#screen {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  image-rendering: pixelated;
+}
+
+/* The search box is drawn on the canvas; this input sits invisibly on top of
+   it to take the typing, the caret position and the IME. */
+#search {
+  position: fixed;
+  opacity: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font-size: 16px;
+  cursor: text;
+}
+
+/* Shortcuts again, as links, for screen readers and keyboard focus. */
+#links a {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

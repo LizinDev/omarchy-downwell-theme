@@ -1,0 +1,23 @@
+:root {
+  color-scheme: dark;
+  background: #000;
+}
+
+body {
+  margin: 0;
+}
+
+#screen {
+  display: block;
+  image-rendering: pixelated;
+  outline: none;
+}
+
+/* The menu again as checkboxes, for screen readers. */
+#options {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
