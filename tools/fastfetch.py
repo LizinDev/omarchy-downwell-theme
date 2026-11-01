@@ -39,7 +39,8 @@ def draw():
     # the hero holds the string in the raised hand: the topmost pixel of the
     # pose, so line that column up under the balloon
     img, (ox, oy) = frame('sprPlayerAirHands', 1)
-    ys, xs = np.nonzero(img[..., 3])
+    # visible pixels only: the sprite's black outline maps to the background
+    ys, xs = np.nonzero((img[..., 3] > 0) & np.any(img[..., :3] != np.array(BG, np.uint8), axis=2))
     hand = xs[ys == ys.min()].mean()
     hero_top = knot + STRING
     c.blit('sprPlayerAirHands', cx - int(round(hand - ox)), hero_top - (ys.min() - oy), 1)
