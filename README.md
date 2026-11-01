@@ -174,9 +174,8 @@ can only be recolored, never redrawn.
 
 ## fastfetch logo
 
-`python3 -I tools/fastfetch.py` draws the hero floating down on the heart balloon, as in the
-clouds background (`sprHeartBalloon` over `sprPlayerAirHands`), as a truecolor fastfetch
-logo in `fastfetch.txt`. Like the sprite
+`python3 -I tools/fastfetch.py` draws the hero mid-air as in the clouds background
+(`sprPlayerAir` frame 4, at 4x) as a truecolor fastfetch logo in `fastfetch.txt`. Like the sprite
 backgrounds it is built from your own copy of the game and stays local. Omarchy has one
 global fastfetch logo; the theme-set hook in the
 [DORFic theme](https://github.com/LizinDev/omarchy-dorfic-theme) (`tools/fastfetch-hook`)
