@@ -172,6 +172,15 @@ do not set; focus rings on web pages are red), and incognito windows ignore them
 altogether. Toolbar buttons, menus and Chromium's own pages (settings, downloads)
 can only be recolored, never redrawn.
 
+## fastfetch logo
+
+`python3 -I tools/fastfetch.py` draws the hero falling, the `sprPlayerAir` sprite from the
+well background, as a truecolor fastfetch logo in `fastfetch.txt`. Like the sprite
+backgrounds it is built from your own copy of the game and stays local. Omarchy has one
+global fastfetch logo; the theme-set hook in the
+[DORFic theme](https://github.com/LizinDev/omarchy-dorfic-theme) (`tools/fastfetch-hook`)
+switches it per theme.
+
 ## Caveats
 
 **Installed from a git clone, this theme loses `hyprland.lua`.** Omarchy drops every
