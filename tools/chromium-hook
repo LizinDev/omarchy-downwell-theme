@@ -86,8 +86,8 @@ if $active; then
       "Run tools/chromium-setup from the $THEME_NAME theme to let Chromium wear it" 2>/dev/null
   fi
 else
-  # asleep: no new tab page of its own, nothing tinted
-  manifest=$(jq 'del(.chrome_url_overrides)' "$DEST/extras/manifest.json")
+  # asleep: no new tab page or shop of its own, nothing tinted
+  manifest=$(jq 'del(.chrome_url_overrides, .side_panel)' "$DEST/extras/manifest.json")
   title=$THEME_NAME
 fi
 

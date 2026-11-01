@@ -6,8 +6,9 @@ extension, from colors.toml and the installed game's sprites.
 chromium/theme   the theme: colors from colors.toml, the well's rim along the
                  tab strip, a red edge on the selected tab, and the title
                  backdrop on Chromium's own new tab page
-chromium/extras  the companion (title-screen new tab page, popup, page tint);
-                 this writes only its art/, the code is checked in
+chromium/extras  the companion (title-screen new tab page, pause-menu popup, shop
+                 side panel, page scrollbars, selection and cursors); this
+                 writes only its art/, the code is checked in
 
 Downwell's art is not ours to publish, so everything this writes is gitignored.
 Omarchy stages chromium/ with the rest of the theme, and the theme-set hook
@@ -169,15 +170,70 @@ def build_theme():
     return manifest
 
 
-# The companion's sprites: name -> (frames, quarter turns clockwise).
+# The companion's sprites: name -> frames, or (frames, quarter turns clockwise).
 SPRITES = {
-    'sprBgWell': 1, 'sprTitle': 1, 'sprPlayerAir': 5, 'sprGemS': 1,
+    'sprBgWell': 1, 'sprTitle': 1, 'sprPlayerAir': 5, 'sprGemS': 1, 'sprGemM': 1,
     'sprTextBox': 1, 'sprSelectArrow': 1, 'sprStCursor': 1,
+    'sprUgSlot': 2, 'sprLocked': 1, 'sprHudLifeHeart': 1, 'sprPauseIcons': 3, 'sprDeathIcons': 1,
+    'sprShopSign': 1, 'sprShopKeeper': 1, 'sprShopCounter': 1, 'sprShopMsg': 1, 'sprShopArrowS': 4,
+    'sprGemsack': 1, 'sprSkullCalm': 1,
 }
+# The upgrades' small icons (their second frame, 12 px), each also as a dim
+# silhouette ('...Off') for switches that are off. The popup gives one to each
+# setting; the shop hands them out to bookmark folders.
+UPGRADES = [
+    'sUgFlap', 'sUgHeadboot', 'sUgGravSuit', 'sUgFengshui', 'sUgAlchemy', 'sUgHardskin', 'sUgFightin',
+    'sUgCandle', 'sUgLeak', 'sUgDrone', 'sUgGemAttractor', 'sUgKnF', 'sUgLaserSight', 'sUgDumbbell',
+    'sUgExplodingKnees', 'sUgWeirdGem', 'sUgStraightShooter', 'sUgApple', 'sUgDrill', 'sUgGemPowered',
+    'sUgZen', 'sUgRIP', 'sUgChainReaction', 'sUgYouth', 'sUgMembersCard', 'sUgBlastMod', 'sUgDecoy',
+    'sUgEngineering', 'sUgGemPop', 'sUgTime', 'sUgRocket', 'sUgSuperBtry', 'sUgLess', 'sUgFortune', 'sUgSafety',
+]
 # Latin-1 and the two punctuation marks the game's font adds; enough for
 # Portuguese dates and most page titles. Anything else falls back to '?'.
 CHARS = [chr(c) for c in range(32, 127)] + [chr(c) for c in range(160, 256)] + ['–', '…']
-SOUNDS = {'move': 'sfxShopScroll', 'pick': 'sfxUiMenu_Select_Confirm', 'back': 'sfxShopBack'}
+SOUNDS = {'move': 'sfxShopScroll', 'pick': 'sfxUiMenu_Select_Confirm', 'back': 'sfxShopBack', 'gem': 'sfxGemGet'}
+
+# The page cursors, drawn here in the game's way (a light body in a dark rim)
+# since the game itself has none: the arrow, an I-beam, and over links the
+# arrow in the accent (the game's menus turn what you would pick red).
+# X rim, W body, R accent, . clear; then the hot spot in art pixels.
+CURSORS = {
+    'arrow': ([
+        'X.........',
+        'XX........',
+        'XWX.......',
+        'XWWX......',
+        'XWWWX.....',
+        'XWWWWX....',
+        'XWWWWWX...',
+        'XWWWWWWX..',
+        'XWWWWWWWX.',
+        'XWWWWXXXXX',
+        'XWWXWWX...',
+        'XWX.XWWX..',
+        'XX..XWWX..',
+        '.....XWWX.',
+        '.....XXXX.',
+    ], (0, 0)),
+    'text': ([
+        'XXX.XXX',
+        'XWWXWWX',
+        'XXXWXXX',
+        '..XWX..',
+        '..XWX..',
+        '..XWX..',
+        '..XWX..',
+        '..XWX..',
+        '..XWX..',
+        '..XWX..',
+        '..XWX..',
+        'XXXWXXX',
+        'XWWXWWX',
+        'XXX.XXX',
+    ], (3, 7)),
+}
+CURSORS['hand'] = ([r.replace('W', 'R') for r in CURSORS['arrow'][0]], CURSORS['arrow'][1])
+CURSOR_SCALE = 2
 GAME = Path.home() / 'Projects/Downwell'
 
 
@@ -226,16 +282,27 @@ def build_art():
     dest = OUT / 'extras/art'
     atlas = Atlas()
     sprites = {}
+
+    def add(img, ox, oy):
+        part, dx, dy = crop(img)
+        x, y = atlas.add(part)
+        return [int(x), int(y), part.shape[1], part.shape[0], int(dx - ox), int(dy - oy)]
+
     for name, spec in SPRITES.items():
         count, quarters = spec if isinstance(spec, tuple) else (spec, 0)
         frames = []
         for i in range(count):
             img, (ox, oy) = frame(name, i)
             img, ox, oy = turn(img, ox, oy, quarters)
-            part, dx, dy = crop(img)
-            x, y = atlas.add(part)
-            frames.append([int(x), int(y), part.shape[1], part.shape[0], int(dx - ox), int(dy - oy)])
+            frames.append(add(img, ox, oy))
         sprites[name] = frames
+    for name in UPGRADES:
+        img, (ox, oy) = frame(name, 1)
+        sprites[name] = [add(img, ox, oy)]
+        off = np.zeros_like(img)
+        off[(img[..., 3] > 0) & (img[..., :3] != BG).any(-1)] = (*k['dark_foreground'], 255)
+        off[(img[..., 3] > 0) & (img[..., :3] == BG).all(-1)] = (*BG, 255)
+        sprites[f'{name}Off'] = [add(off, ox, oy)]
 
     # The logo's under-stroke, as tools/title.py draws it: its white in the accent.
     img, (ox, oy) = frame('sprTitle')
@@ -272,11 +339,27 @@ def build_art():
     palette = {key: '#%02x%02x%02x' % tuple(v) for key, v in k.items() if key != 'mode'}
     (dest / 'atlas.json').write_text(json.dumps({
         'sprites': sprites,
+        'upgrades': UPGRADES,
         'font': {'height': 10, 'chars': chars},
     }, separators=(',', ':')))
+    # What the companion injects into every site, part by part while each is
+    # on: a stylesheet, and for the cursors also a script (checked in, the
+    # same for every theme). The CSS files are named per theme: the companion
+    # registers them by file name, so a theme switch registers new files
+    # rather than counting on Chromium rereading.
     (dest / 'theme.json').write_text(json.dumps({
         'name': NAME, 'title': TITLE, 'built': VERSION, 'palette': palette,
-        'tints': {part: f'art/tint-{NAME}-{part}.css' for part in ('scrollbars', 'selection')},
+        'tints': {
+            'scrollbars': {'css': [f'art/tint-{NAME}-scrollbars.css']},
+            'selection': {'css': [f'art/tint-{NAME}-selection.css']},
+            'cursors': {'css': [f'art/tint-{NAME}-cursors.css'], 'js': ['cursors.js']},
+        },
+        # the companion's own pages wear the same cursors (content scripts
+        # never reach extension pages)
+        'cursors': {
+            name: {'file': f'art/page-{NAME}-cursor-{name}.png', 'hot': [v * CURSOR_SCALE for v in spot]}
+            for name, (_, spot) in CURSORS.items()
+        },
     }, indent=2) + '\n')
 
     # toolbar and extension icons: the gem, as large as fits on a whole scale
@@ -295,17 +378,79 @@ def build_art():
         icon[y0:y0 + big.shape[0], x0:x0 + big.shape[1]] = big
         png(dest / f'icon-{size}.png', icon)
 
-    # What the page tint injects into every site, each part while it is on.
-    # Named per theme: the companion registers them by file name, so a theme
-    # switch registers new files rather than counting on Chromium rereading.
-    tints = {
-        'scrollbars': f":root {{ scrollbar-color: {palette['accent']} {palette['darker_background']}; }}\n",
-        'selection': f"::selection {{ background-color: {palette['accent']}; color: {palette['bright_foreground']}; }}\n",
-    }
-    for old in dest.glob('tint-*.css'):
+    # download notifications: the gem sack when one lands, a skull when it fails
+    for name, sprite in (('done', 'sprGemsack'), ('failed', 'sprSkullCalm')):
+        img, _ = frame(sprite, 0)
+        part, _, _ = crop(img)
+        s = 120 // max(part.shape[:2])
+        big = part.repeat(s, 0).repeat(s, 1)
+        icon = np.zeros((128, 128, 4), np.uint8)
+        y0, x0 = (128 - big.shape[0]) // 2, (128 - big.shape[1]) // 2
+        icon[y0:y0 + big.shape[0], x0:x0 + big.shape[1]] = big
+        png(dest / f'notify-{name}.png', icon)
+
+    # The page parts. Their images are named per theme like the stylesheets,
+    # and reach pages as extension URLs: a page's CSP blocks data: images but
+    # lets extension resources through.
+    for old in [*dest.glob('tint-*.css'), *dest.glob('page-*.png')]:
         old.unlink()
+    url = 'chrome-extension://__MSG_@@extension_id__/art'
+    ink = {'X': (*BG, 255), 'W': (*k['bright_foreground'], 255), 'R': (*ACCENT, 255), '.': (0, 0, 0, 0)}
+    for name, (rows, _) in CURSORS.items():
+        px = np.array([[ink[c] for c in r] for r in rows], np.uint8)
+        png(dest / f'page-{NAME}-cursor-{name}.png', px, CURSOR_SCALE)
+
+    def cursor(name, fallback):
+        x, y = (v * CURSOR_SCALE for v in CURSORS[name][1])
+        return f'url({url}/page-{NAME}-cursor-{name}.png) {x} {y}, {fallback}'
+
+    # the ammo gauge's frame, a nine-slice: the rim in the ink, its corners cut
+    gauge = np.zeros((3, 3, 4), np.uint8)
+    gauge[:] = (*BG, 255)
+    gauge[0, 1] = gauge[1, 0] = gauge[1, 2] = gauge[2, 1] = (*FG, 255)
+    png(dest / f'page-{NAME}-gauge.png', gauge, 2)
+
+    p = palette
+    clickable = ', '.join([
+        'a[href]', 'button:not(:disabled)', 'summary', 'label[for]', 'select:not(:disabled)',
+        *(f'[role={r}]:not([aria-disabled=true])' for r in ('button', 'link', 'tab', 'menuitem', 'option', 'checkbox', 'radio', 'switch')),
+        *(f'input[type={t}]:not(:disabled)' for t in ('button', 'submit', 'reset', 'checkbox', 'radio', 'file', 'color', 'image', 'range')),
+    ])
+    typing = ', '.join([
+        'input:not([type])', 'textarea', '[contenteditable]:not([contenteditable=false])',
+        *(f'input[type={t}]' for t in ('text', 'search', 'email', 'url', 'tel', 'password', 'number')),
+    ])
+    tints = {
+        # The gunboots' ammo gauge: a white rim with cut corners, a black gap,
+        # and the charge in the accent, cut into rounds. It turns white while
+        # held, as the gauge flashes when it recharges.
+        'scrollbars': f"""
+::-webkit-scrollbar {{ width: 16px; height: 16px; background: {p['background']}; }}
+::-webkit-scrollbar-button {{ display: none; }}
+::-webkit-scrollbar-corner {{ background: {p['background']}; }}
+::-webkit-scrollbar-track {{ border: 2px solid {p['foreground']}; border-image: url({url}/page-{NAME}-gauge.png) 2 fill / 2px; }}
+::-webkit-scrollbar-thumb {{ border: 4px solid transparent; background-clip: padding-box; background-color: {p['accent']}; }}
+::-webkit-scrollbar-thumb:vertical {{ min-height: 24px; background-image: repeating-linear-gradient(to bottom, transparent 0 10px, {p['background']} 10px 12px); }}
+::-webkit-scrollbar-thumb:horizontal {{ min-width: 24px; background-image: repeating-linear-gradient(to right, transparent 0 10px, {p['background']} 10px 12px); }}
+::-webkit-scrollbar-thumb:hover, ::-webkit-scrollbar-thumb:active {{ background-color: {p['bright_foreground']}; }}
+""",
+        'selection': f"""
+::selection {{ background-color: {p['accent']}; color: {p['bright_foreground']}; }}
+:root {{ caret-color: {p['accent']}; }}
+""",
+        # cursors.js marks the element under the pointer when the page asks it
+        # for an arrow, a hand or an I-beam of its own, for the last rules.
+        'cursors': f"""
+:root {{ cursor: {cursor('arrow', 'default')}; }}
+:is({clickable}) {{ cursor: {cursor('hand', 'pointer')} !important; }}
+:is({typing}) {{ cursor: {cursor('text', 'text')} !important; }}
+[data-gunboots-cursor=arrow] {{ cursor: {cursor('arrow', 'default')} !important; }}
+[data-gunboots-cursor=hand] {{ cursor: {cursor('hand', 'pointer')} !important; }}
+[data-gunboots-cursor=text] {{ cursor: {cursor('text', 'text')} !important; }}
+""",
+    }
     for part, css in tints.items():
-        (dest / f'tint-{NAME}-{part}.css').write_text(f"/* {TITLE}: generated by tools/chromium.py */\n{css}")
+        (dest / f'tint-{NAME}-{part}.css').write_text(f"/* {TITLE}: generated by tools/chromium.py */{css}")
 
     sounds = dest / 'sounds'
     sounds.mkdir(parents=True, exist_ok=True)

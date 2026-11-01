@@ -1,14 +1,18 @@
-// The toolbar popup, drawn as the game's pause menu: the settings as rows
-// with the red arrow on the chosen one, and the theme's state.
+// The toolbar popup, drawn as the game's pause menu: the settings as rows,
+// each with an upgrade's icon (dimmed while off) and the red arrow on the
+// chosen one, a row that opens the shop, and the theme's state.
 
 import { loadArt, Sounds } from './lib/pixel.js';
 import { OPTIONS, getSettings, setSetting, getStatus } from './lib/settings.js';
 
 const SCALE = 2;
-const W = 160;
-const ROW = 14;
+const W = 188;
+const ROW = 16;
 const TOP = 52;
-const H = TOP + 12 + OPTIONS.length * ROW + 26;
+const ROWS = OPTIONS.length + 1;   // the settings, then the shop
+const SHOP = OPTIONS.length;
+const STATUS = TOP + 8 + ROWS * ROW + 6;
+const H = STATUS + 32;
 
 const canvas = document.getElementById('screen');
 const list = document.getElementById('options');
@@ -19,7 +23,9 @@ canvas.style.height = `${H * SCALE}px`;
 const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 
-const [art, initial] = await Promise.all([loadArt(), getSettings()]);
+// The window is looked up now: the side panel opens only from a click or a
+// key, and an await before chrome.sidePanel.open would lose that.
+const [art, initial, win] = await Promise.all([loadArt(), getSettings(), chrome.windows.getCurrent()]);
 const pal = art.palette;
 document.documentElement.style.background = pal.background;
 let settings = initial;
@@ -34,13 +40,14 @@ chrome.runtime.sendMessage({ type: 'sync' }).then((s) => {
   }
 }).catch(() => {});
 
-function statusLine() {
+// icon, then one or two lines of text
+function statusLines() {
   const title = (status.title || art.theme.title).toUpperCase();
   switch (status.state) {
-    case 'restart': return ['accent', 'RESTART: chrome://restart'];
-    case 'policy': return ['accent', 'RUN tools/chromium-setup'];
-    case 'asleep': return ['dim', `ASLEEP: ${status.theme || 'other theme'}`];
-    default: return ['dim', `${title} ON`];
+    case 'restart': return ['sprDeathIcons', ['RESTART CHROMIUM', 'fg'], ['chrome://restart', 'accent']];
+    case 'policy': return ['sprLocked', ['COLOR POLICY ON', 'fg'], ['run tools/chromium-setup', 'accent']];
+    case 'asleep': return [['sprPauseIcons', 2], ['ASLEEP', 'dim'], [status.theme || 'other theme', 'dim']];
+    default: return ['sprHudLifeHeart', [`${title} ON`, 'fg']];
   }
 }
 
@@ -51,21 +58,37 @@ function draw() {
   art.sprite(ctx, 'sprTitle', 0, W / 2, 20);
   art.text(ctx, 'PAUSED', W / 2, 36, 'dim', { align: 'center' });
 
-  art.box(ctx, 4, TOP - 6, W - 8, OPTIONS.length * ROW + 14);
-  OPTIONS.forEach(([key, label], i) => {
+  art.box(ctx, 4, TOP - 6, W - 8, ROWS * ROW + 12);
+  for (let i = 0; i < ROWS; i++) {
     const y = TOP + 2 + i * ROW;
     const on = i === chosen;
-    if (on) art.sprite(ctx, 'sprSelectArrow', 0, 14, y + 4);
-    art.text(ctx, label, 22, y, on ? 'accent' : 'fg');
+    if (on) art.sprite(ctx, 'sprSelectArrow', 0, 12, y + 4);
+    if (i === SHOP) {
+      art.sprite(ctx, 'sUgMembersCard', 0, 26, y + 4);
+      art.text(ctx, 'SHOP', 38, y, on ? 'accent' : 'fg');
+      art.text(ctx, 'OPEN', W - 14, y, on ? 'accent' : 'dim', { align: 'right' });
+      continue;
+    }
+    const [key, label, icon] = OPTIONS[i];
+    art.sprite(ctx, settings[key] ? icon : `${icon}Off`, 0, 26, y + 4);
+    art.text(ctx, label, 38, y, on ? 'accent' : 'fg');
     art.text(ctx, settings[key] ? 'ON' : 'OFF', W - 14, y, settings[key] ? 'accent' : 'dim', { align: 'right' });
-  });
+  }
 
-  const y = TOP + 12 + OPTIONS.length * ROW + 4;
-  const [ink, line] = statusLine();
-  art.text(ctx, art.fit(line, W - 16), W / 2, y + 4, ink, { align: 'center' });
+  const [icon, ...lines] = statusLines();
+  const [name, frame] = Array.isArray(icon) ? icon : [icon, 0];
+  const mid = STATUS + 14;
+  art.sprite(ctx, name, frame, 20, mid);
+  const top = mid - lines.length * 5;
+  lines.forEach(([line, ink], i) => art.text(ctx, art.fit(line, W - 44), 36, top + i * 10, ink));
 }
 
 function describe() {
+  const shop = document.createElement('li');
+  const button = document.createElement('button');
+  button.textContent = 'open the shop';
+  button.addEventListener('click', openShop);
+  shop.append(button);
   list.replaceChildren(...OPTIONS.map(([key, label], i) => {
     const li = document.createElement('li');
     const box = document.createElement('input');
@@ -78,10 +101,19 @@ function describe() {
     name.textContent = label.toLowerCase();
     li.append(box, name);
     return li;
-  }));
+  }), shop);
 }
 
-async function toggle(i) {
+function openShop() {
+  chrome.sidePanel.open({ windowId: win.id }).then(() => window.close(), () => {});
+  sounds.play('pick', { volume: 0.4 });
+}
+
+async function pick(i) {
+  if (i === SHOP) {
+    openShop();
+    return;
+  }
   const [key] = OPTIONS[i];
   settings = await setSetting(key, !settings[key]);
   sounds.enabled = settings.sound;
@@ -91,7 +123,7 @@ async function toggle(i) {
 }
 
 function move(to) {
-  const next = (to + OPTIONS.length) % OPTIONS.length;
+  const next = (to + ROWS) % ROWS;
   if (next === chosen) return;
   chosen = next;
   sounds.play('move', { volume: 0.3 });
@@ -101,7 +133,7 @@ function move(to) {
 canvas.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowDown' || e.key === 's') move(chosen + 1);
   else if (e.key === 'ArrowUp' || e.key === 'w') move(chosen - 1);
-  else if (['Enter', ' ', 'ArrowLeft', 'ArrowRight'].includes(e.key)) toggle(chosen);
+  else if (['Enter', ' ', 'ArrowLeft', 'ArrowRight'].includes(e.key)) pick(chosen);
   else return;
   e.preventDefault();
 });
@@ -109,17 +141,17 @@ canvas.addEventListener('keydown', (e) => {
 function rowAt(e) {
   const y = e.offsetY / SCALE;
   const i = Math.floor((y - TOP + 2) / ROW);
-  return i >= 0 && i < OPTIONS.length ? i : -1;
+  return i >= 0 && i < ROWS ? i : -1;
 }
 
 canvas.addEventListener('mousemove', (e) => {
   const i = rowAt(e);
-  canvas.style.cursor = i >= 0 ? 'pointer' : 'default';
+  canvas.style.cursor = art.cursor(i >= 0 ? 'hand' : 'arrow', settings.cursors);
   if (i >= 0) move(i);
 });
 canvas.addEventListener('click', (e) => {
   const i = rowAt(e);
-  if (i >= 0) toggle(i);
+  if (i >= 0) pick(i);
 });
 
 describe();

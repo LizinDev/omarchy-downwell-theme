@@ -97,11 +97,24 @@ scale them 4× on an integer pixel grid.
   - a new tab page drawn as the game's title screen, a still: the opening backdrop's
     ledges with the hero dropping in, the logo, a clock, a search box, and your most
     visited sites as a row of icons repainted in the palette's three colors, the chosen
-    one framed by the game's cursor corners. Keys: `1`–`8` open a shortcut, arrows and
-    `Enter` choose one, `/` or just typing searches.
-  - a toolbar popup drawn as the pause menu: sound (off by default), page
-    scrollbars and text selection in the red, repainted icons, 24-hour clock.
-  - scrollbars and selected text on every site in the red, while those are on.
+    one framed by the game's cursor corners and the slots left over shown as locked
+    upgrade slots. Keys: `1`–`8` open a shortcut, arrows and `Enter` choose one, `/` or
+    just typing searches.
+  - a toolbar popup drawn as the pause menu, each setting with an upgrade's icon: sound
+    (off by default), page scrollbars, text selection, cursors, repainted icons,
+    download notices, 24-hour clock, and a row that opens the shop.
+  - a side panel drawn as the game's shop: the sign, the shopkeeper behind his counter,
+    and three aisles (bookmarks, history of the last week, downloads) with folders as
+    upgrade icons and prices in gems (a folder's size, a page's visits). Left and right
+    change aisle, `Enter` opens, `Backspace` leaves a folder, typing searches. Open it
+    from the popup, Chromium's side panel menu, or a shortcut you set for "Open the
+    shop" in `chrome://extensions/shortcuts`.
+  - on every site, while each is on: scrollbars drawn as the gunboots' ammo gauge (a
+    white rim, the charge in red cut into rounds), selected text and the caret in the
+    red, and pixel cursors (a white arrow, the arrow in red over anything clickable, an
+    I-beam over text fields).
+  - a notice when a download ends: the gem sack ("GEM GET!", with the gem sound if
+    sound is on) or a skull when it fails.
 
 Everything is drawn in the game's font and sprites at a whole-number scale.
 

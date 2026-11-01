@@ -15,6 +15,7 @@ export async function loadArt() {
 export class Art {
   constructor(atlas, theme, image) {
     this.sprites = atlas.sprites;
+    this.upgrades = atlas.upgrades;
     this.font = atlas.font;
     this.theme = theme;
     this.palette = theme.palette;
@@ -44,10 +45,24 @@ export class Art {
     }
   }
 
+  // Draw a frame with the top left of its opaque pixels at x, y.
+  place(ctx, name, i, x, y) {
+    const [x0, y0] = this.bounds(name, i);
+    this.sprite(ctx, name, i, x - x0, y - y0);
+  }
+
   // Opaque extent of a frame relative to its origin: [x0, y0, x1, y1].
   bounds(name, i = 0) {
     const [, , w, h, dx, dy] = this.sprites[name][i];
     return [dx, dy, dx + w - 1, dy + h - 1];
+  }
+
+  // A CSS cursor: the theme's own (arrow, hand, text) when `on`, else the
+  // system's.
+  cursor(kind, on = true) {
+    const fallback = { arrow: 'default', hand: 'pointer', text: 'text' }[kind];
+    const c = on && this.theme.cursors?.[kind];
+    return c ? `url("${chrome.runtime.getURL(c.file)}") ${c.hot[0]} ${c.hot[1]}, ${fallback}` : fallback;
   }
 
   glyph(ch) {

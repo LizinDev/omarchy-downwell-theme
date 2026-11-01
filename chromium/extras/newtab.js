@@ -1,10 +1,11 @@
 // The new tab page, as the game's title screen: the opening backdrop with the
 // logo and the hero falling in, a clock, a search box, and the most visited
-// sites as a row of boxes like the game's upgrade choice. A still: it redraws
-// only for the clock, the caret and the pointer.
+// sites in a row of eight, the slots left over locked. A still: it
+// redraws only for the clock, the caret and the pointer.
 // Keys: 1-8 open a shortcut, arrows and Enter choose one, / or typing searches.
 
 import { loadArt, fitCanvas, Sounds } from './lib/pixel.js';
+import { favicon } from './lib/favicon.js';
 import { getSettings, getStatus } from './lib/settings.js';
 
 // Asleep (the Omarchy theme has no Chromium build) but started awake: hand the
@@ -40,60 +41,12 @@ chrome.runtime.sendMessage({ type: 'sync' }).then(setStatus).catch(() => {});
 let shortcuts = [];
 let chosen = -1;
 
-// Repaint a favicon in the palette's three colors, as the game's palettes
-// repaint its sprites: saturated pixels take the accent, light ones the ink,
-// dark ones the field. An icon that would come out mostly field (a black logo)
-// is flipped so it still shows on black.
-function repaint(ctx) {
-  const img = ctx.getImageData(0, 0, 16, 16);
-  const d = img.data;
-  const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
-  const ink = { field: hex(pal.background), fg: hex(pal.bright_foreground), accent: hex(pal.accent) };
-  const roles = new Array(256).fill(null);
-  const count = { field: 0, fg: 0, accent: 0 };
-  for (let i = 0; i < 256; i++) {
-    const [r, g, b, a] = d.subarray(i * 4, i * 4 + 4);
-    if (a < 100) continue;
-    const max = Math.max(r, g, b), min = Math.min(r, g, b);
-    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-    const role = max > 90 && (max - min) / max > 0.45 ? 'accent' : lum > 110 ? 'fg' : 'field';
-    roles[i] = role;
-    count[role]++;
-  }
-  const flip = count.field > count.fg + count.accent;
-  for (let i = 0; i < 256; i++) {
-    let role = roles[i];
-    if (!role) {
-      d[i * 4 + 3] = 0;
-      continue;
-    }
-    if (flip) role = role === 'field' ? 'fg' : role === 'fg' ? 'field' : role;
-    d.set([...ink[role], 255], i * 4);
-  }
-  ctx.putImageData(img, 0, 0);
-}
-
-async function favicon(url) {
-  const icon = new OffscreenCanvas(16, 16);
-  const ctx = icon.getContext('2d');
-  const img = new Image();
-  img.src = `${chrome.runtime.getURL('/_favicon/')}?pageUrl=${encodeURIComponent(url)}&size=16`;
-  try {
-    await img.decode();
-    ctx.drawImage(img, 0, 0, 16, 16);
-    if (settings.favicons) repaint(ctx);
-  } catch {
-    art.sprite(ctx, 'sprGemS', 0, 8, 8);
-  }
-  return icon;
-}
-
 async function loadShortcuts() {
   const sites = (await chrome.topSites.get()).slice(0, 8);
   shortcuts = await Promise.all(sites.map(async (s) => ({
     url: s.url,
     title: s.title || new URL(s.url).hostname,
-    icon: await favicon(s.url),
+    icon: await favicon(art, s.url, settings.favicons),
   })));
   nav.replaceChildren(...shortcuts.map((s, i) => {
     const a = document.createElement('a');
@@ -126,6 +79,7 @@ function choose(i) {
 // little height for the menu.
 const BACKDROP = { w: 508, h: 286, center: 254, ox: 64 };
 const SLOT = 28;
+const SLOTS = 8;
 let scale = 4;
 let view = null;
 
@@ -160,9 +114,10 @@ function layout() {
   });
 }
 
+// All eight slots; those past the shortcuts have no site.
 function slots() {
-  const x0 = view.cx - Math.floor((shortcuts.length * SLOT) / 2);
-  return shortcuts.map((s, i) => ({ s, i, x: x0 + i * SLOT, y: view.rowY - SLOT / 2 }));
+  const x0 = view.cx - Math.floor((SLOTS * SLOT) / 2);
+  return Array.from({ length: SLOTS }, (_, i) => ({ s: shortcuts[i], i, x: x0 + i * SLOT, y: view.rowY - SLOT / 2 }));
 }
 
 // ---- drawing ------------------------------------------------------------
@@ -199,11 +154,19 @@ function searchBox(ctx, b) {
 }
 
 // The shortcuts in a row, the chosen one framed by the game's cursor corners
-// and named underneath.
+// and named underneath. The slots past the last shortcut are the game's
+// upgrade slots, locked. (A favicon would fill a slot's pit, so the sites go
+// without one.)
 function row(ctx, v) {
   for (const { s, i, x, y } of slots()) {
-    ctx.drawImage(s.icon, x + 6, y + 6);
-    if (i === chosen) art.sprite(ctx, 'sprStCursor', 0, x + 14, y + 14);
+    const cx = x + SLOT / 2, cy = y + SLOT / 2;
+    if (!s) {
+      art.sprite(ctx, 'sprUgSlot', 0, cx, cy);
+      art.sprite(ctx, 'sprLocked', 0, cx, cy - 2);
+      continue;
+    }
+    ctx.drawImage(s.icon, cx - 8, cy - 8);
+    if (i === chosen) art.sprite(ctx, 'sprStCursor', 0, cx, cy);
   }
   const label = chosen >= 0
     ? [art.fit(shortcuts[chosen].title, v.w - 24), 'accent']
@@ -247,6 +210,8 @@ function draw() {
   row(ctx, v);
 }
 
+canvas.style.cursor = art.cursor('arrow', settings.cursors);
+search.style.cursor = art.cursor('text', settings.cursors);
 layout();
 draw();
 loadShortcuts();
@@ -311,13 +276,13 @@ function submit() {
 
 function slotAt(e) {
   const x = e.clientX / scale, y = e.clientY / scale;
-  return slots().findIndex((s) => x >= s.x && x < s.x + SLOT && y >= s.y && y < s.y + SLOT);
+  return slots().findIndex((s) => s.s && x >= s.x && x < s.x + SLOT && y >= s.y && y < s.y + SLOT);
 }
 
 canvas.addEventListener('mousemove', (e) => {
   const i = slotAt(e);
   if (i >= 0) choose(i);
-  canvas.style.cursor = i >= 0 ? 'pointer' : 'default';
+  canvas.style.cursor = art.cursor(i >= 0 ? 'hand' : 'arrow', settings.cursors);
 });
 
 canvas.addEventListener('mousedown', (e) => {
