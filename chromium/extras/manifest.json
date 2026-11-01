@@ -1,13 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Downwell Gunboots",
-  "description": "Companion of the Downwell Omarchy theme: a title-screen new tab page, a pause-menu popup, a shop side panel for bookmarks, history and downloads, and the game's scrollbars, cursors and selection on every site.",
-  "version": "1.1.0",
+  "description": "Companion of the Downwell Omarchy theme: a title-screen new tab page, a pause-menu popup, a shop side panel for bookmarks, history and downloads, the game's scrollbars, cursors, selection and focus rings on every site, and its death screen for pages that fail to load.",
+  "version": "1.2.0",
   "version_name": "unset",
   "minimum_chrome_version": "120",
   "permissions": [
     "storage", "alarms", "management", "topSites", "favicon", "search", "scripting", "notifications",
-    "sidePanel", "bookmarks", "history", "downloads", "downloads.open", "offscreen"
+    "sidePanel", "bookmarks", "history", "downloads", "downloads.open", "offscreen", "webNavigation", "tabGroups"
   ],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "sw.js", "type": "module" },

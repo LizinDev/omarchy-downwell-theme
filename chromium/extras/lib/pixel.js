@@ -1,4 +1,4 @@
-// Draws the game's sprites and font from art/ (built by tools/chromium.py).
+// Draws the game's sprites and fonts from art/ (built by tools/chromium.py).
 // Everything is drawn in art pixels on a small canvas that CSS scales up by a
 // whole number, the way the game scales its 480x270 screen.
 
@@ -12,11 +12,17 @@ export async function loadArt() {
   return new Art(atlas, theme, image);
 }
 
+// typographic marks a font may lack, and what to draw instead
+const PLAIN = {
+  '—': '-', '–': '-', '‐': '-', '‘': "'", '’': "'", '“': '"', '”': '"', '«': '"', '»': '"',
+  '•': '*', '·': '.', '…': '.', '\u00a0': ' ',
+};
+
 export class Art {
   constructor(atlas, theme, image) {
     this.sprites = atlas.sprites;
     this.upgrades = atlas.upgrades;
-    this.font = atlas.font;
+    this.fonts = atlas.fonts;
     this.theme = theme;
     this.palette = theme.palette;
     this.image = image;
@@ -65,25 +71,29 @@ export class Art {
     return c ? `url("${chrome.runtime.getURL(c.file)}") ${c.hot[0]} ${c.hot[1]}, ${fallback}` : fallback;
   }
 
-  glyph(ch) {
-    return this.font.chars[ch] ?? this.font.chars['?'];
+  // A character of a font, or its letter without the accent or its plain
+  // ASCII stand-in (fontSmall is ASCII only), or '?'.
+  glyph(ch, font = 'font0') {
+    const chars = this.fonts[font].chars;
+    return chars[ch] ?? chars[ch.normalize('NFD')[0]] ?? chars[PLAIN[ch]] ?? chars['?'];
   }
 
-  measure(text, scale = 1) {
+  measure(text, { scale = 1, font = 'font0' } = {}) {
     let w = 0;
-    for (const ch of text) w += this.glyph(ch).shift;
+    for (const ch of text) w += this.glyph(ch, font).shift;
     return w * scale;
   }
 
-  // The game's font0. `ink` is one of fg, accent, dim, field.
-  text(ctx, text, x, y, ink = 'fg', { align = 'left', scale = 1 } = {}) {
-    const width = this.measure(text, scale);
+  // Text in one of the game's fonts: font0, or 'small' (fontSmall). `ink` is
+  // one of fg, accent, dim, field.
+  text(ctx, text, x, y, ink = 'fg', { align = 'left', scale = 1, font = 'font0' } = {}) {
+    const width = this.measure(text, { scale, font });
     if (align === 'right') x -= width;
     else if (align === 'center') x -= Math.floor(width / 2);
     x = Math.round(x);
     y = Math.round(y);
     for (const ch of text) {
-      const g = this.glyph(ch);
+      const g = this.glyph(ch, font);
       const at = g.at[ink];
       if (at) ctx.drawImage(this.image, at[0], at[1], g.w, g.h, x + g.offset * scale, y, g.w * scale, g.h * scale);
       x += g.shift * scale;
@@ -91,11 +101,33 @@ export class Art {
     return width;
   }
 
-  // Cut text to fit `max` art pixels, ending in an ellipsis.
-  fit(text, max, scale = 1) {
-    if (this.measure(text, scale) <= max) return text;
-    while (text && this.measure(text + '…', scale) > max) text = text.slice(0, -1);
-    return text.trimEnd() + '…';
+  // Cut text to fit `max` art pixels, ending in an ellipsis (three dots in a
+  // font without one).
+  fit(text, max, options = {}) {
+    if (this.measure(text, options) <= max) return text;
+    const more = this.fonts[options.font ?? 'font0'].chars['…'] ? '…' : '...';
+    while (text && this.measure(text + more, options) > max) text = text.slice(0, -1);
+    return text.trimEnd() + more;
+  }
+
+  // Break text into lines of at most `max` art pixels, at spaces where it can
+  // (a URL breaks anywhere); at most `count` lines, the last one cut short.
+  wrap(text, max, count, options = {}) {
+    const lines = [];
+    let rest = text.trim();
+    while (rest && lines.length < count) {
+      if (lines.length === count - 1 || this.measure(rest, options) <= max) {
+        lines.push(this.fit(rest, max, options));
+        break;
+      }
+      let end = 1;
+      while (end < rest.length && this.measure(rest.slice(0, end + 1), options) <= max) end++;
+      const space = rest.lastIndexOf(' ', end);
+      if (space > end / 2) end = space;
+      lines.push(rest.slice(0, end).trimEnd());
+      rest = rest.slice(end).trimStart();
+    }
+    return lines;
   }
 
   // The game's text box (sprTextBox) stretched as a nine-slice: a white rim

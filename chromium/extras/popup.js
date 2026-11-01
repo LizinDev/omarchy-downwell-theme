@@ -1,13 +1,14 @@
 // The toolbar popup, drawn as the game's pause menu: the settings as rows,
 // each with an upgrade's icon (dimmed while off) and the red arrow on the
-// chosen one, a row that opens the shop, and the theme's state.
+// chosen one, a row that opens the shop, the theme's state, and in the corner
+// today's gems (pages visited) as the game's HUD counts them.
 
 import { loadArt, Sounds } from './lib/pixel.js';
 import { OPTIONS, getSettings, setSetting, getStatus } from './lib/settings.js';
 
 const SCALE = 2;
 const W = 188;
-const ROW = 16;
+const ROW = 14;
 const TOP = 52;
 const ROWS = OPTIONS.length + 1;   // the settings, then the shop
 const SHOP = OPTIONS.length;
@@ -31,7 +32,18 @@ document.documentElement.style.background = pal.background;
 let settings = initial;
 let status = await getStatus();
 let chosen = 0;
+let gems = null;
 const sounds = new Sounds(settings.sound);
+
+// today's pages, each one gem
+async function countGems() {
+  const own = chrome.runtime.getURL('');
+  const pages = await chrome.history.search({
+    text: '', startTime: new Date().setHours(0, 0, 0, 0), maxResults: 100000,
+  }).catch(() => []);
+  gems = pages.filter((p) => !p.url.startsWith(own)).length;
+  draw();
+}
 
 chrome.runtime.sendMessage({ type: 'sync' }).then((s) => {
   if (s) {
@@ -57,6 +69,10 @@ function draw() {
   art.sprite(ctx, 'sprTitleStroke', 0, W / 2, 22);
   art.sprite(ctx, 'sprTitle', 0, W / 2, 20);
   art.text(ctx, 'PAUSED', W / 2, 36, 'dim', { align: 'center' });
+  if (settings.gems && gems !== null) {
+    const tw = art.text(ctx, String(gems), W - 6, 4, 'fg', { align: 'right' });
+    art.sprite(ctx, 'sprGemS', 0, W - 12 - tw, 8);
+  }
 
   art.box(ctx, 4, TOP - 6, W - 8, ROWS * ROW + 12);
   for (let i = 0; i < ROWS; i++) {
@@ -157,3 +173,4 @@ canvas.addEventListener('click', (e) => {
 describe();
 draw();
 canvas.focus();
+countGems();

@@ -125,6 +125,52 @@ async function downloaded(delta) {
   if (settings.sound) play(done ? 'gem' : 'back', 0.5);
 }
 
+// ---- game over ----------------------------------------------------------
+
+// A page that fails to load gets the game's death screen in place of
+// Chromium's error page. The failed entry stays behind it in the tab's
+// history, and going back loads it again: so a second failure of the same
+// address in the same tab goes through to Chromium's own page, unless the
+// death screen's RETRY asked for it. Errors Chromium has its own way out of
+// (certificates, a form to resend) or that are no failure (a stopped load, a
+// blocker) are left alone.
+const GAMEOVER = chrome.runtime.getURL('gameover.html');
+const QUIET = new Set([
+  'net::ERR_ABORTED', 'net::ERR_BLOCKED_BY_CLIENT', 'net::ERR_BLOCKED_BY_ADMINISTRATOR', 'net::ERR_CACHE_MISS',
+]);
+
+async function failed(details) {
+  const { tabId, frameId, url, error } = details;
+  if (frameId !== 0 || tabId < 0 || !/^(https?|file):/.test(url)) return;
+  if (QUIET.has(error) || /^net::ERR_(CERT|SSL)_/.test(error)) return;
+  const key = `dead-${tabId}`;
+  const [settings, state, { [key]: last }] = await Promise.all([
+    getSettings(), readJSON('state.json'), chrome.storage.session.get(key),
+  ]);
+  if (!settings.gameover || state?.active === false) return;
+  if (last?.url === url && !last.retry) return;
+  await chrome.storage.session.set({ [key]: { url } });
+  chrome.tabs.update(tabId, { url: `${GAMEOVER}?${new URLSearchParams({ url, error })}` }).catch(() => {});
+}
+
+// A tab that loads something else forgets its last failure.
+function committed({ tabId, frameId, url }) {
+  if (frameId === 0 && !url.startsWith(GAMEOVER)) chrome.storage.session.remove(`dead-${tabId}`);
+}
+
+async function retry(tabId, url) {
+  await chrome.storage.session.set({ [`dead-${tabId}`]: { url, retry: true } });
+}
+
+// ---- tab groups ---------------------------------------------------------
+
+// A new group takes the color of Chromium's nearest the accent.
+async function grouped(group) {
+  const [settings, state, art] = await Promise.all([getSettings(), readJSON('state.json'), readJSON('art/theme.json')]);
+  if (!settings.groups || state?.active === false || !art?.groupColor) return;
+  chrome.tabGroups.update(group.id, { color: art.groupColor }).catch(() => {});
+}
+
 async function start() {
   if (!(await chrome.alarms.get('sync'))) chrome.alarms.create('sync', { periodInMinutes: 0.5 });
   await sync();
@@ -139,6 +185,11 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.settings) sync();
 });
 chrome.downloads.onChanged.addListener(downloaded);
+// Optional: files updated in place run before Chromium restarts and grants
+// the permissions these need.
+chrome.webNavigation?.onErrorOccurred.addListener(failed);
+chrome.webNavigation?.onCommitted.addListener(committed);
+chrome.tabGroups?.onCreated.addListener(grouped);
 chrome.notifications.onClicked.addListener((id) => {
   if (id.startsWith('download-')) chrome.downloads.show(Number(id.slice(9)));
   if (id.startsWith('restart-') || id.startsWith('download-')) chrome.notifications.clear(id);
@@ -147,6 +198,10 @@ chrome.commands.onCommand.addListener((command, tab) => {
   if (command === 'open-shop' && tab) chrome.sidePanel.open({ windowId: tab.windowId });
 });
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
+  if (message?.type === 'retry' && sender.tab) {
+    retry(sender.tab.id, message.url).then(() => reply(true), () => reply(false));
+    return true;
+  }
   if (message?.type !== 'sync') return false;
   sync().then(reply, () => reply(null));
   return true;

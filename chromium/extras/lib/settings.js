@@ -6,8 +6,12 @@ export const DEFAULTS = {
   scrollbars: true,  // page scrollbars in the accent
   selection: true,   // selected text on pages in the accent
   cursors: true,     // the game's cursors on pages
+  focus: true,       // keyboard focus rings on pages in the accent
   favicons: true,    // shortcut icons repainted in the three palette colors
   downloads: true,   // a notification (and with sound, the gem sound) when a download ends
+  gameover: true,    // a page that fails to load shows the game's death screen
+  groups: false,     // new tab groups take the accent's color (overrides the one Chromium picks)
+  gems: true,        // today's pages, as gems, in the pause menu
   clock24: true,
 };
 
@@ -17,8 +21,12 @@ export const OPTIONS = [
   ['scrollbars', 'SCROLLBARS', 'sUgSuperBtry'],
   ['selection', 'SELECTION', 'sUgStraightShooter'],
   ['cursors', 'CURSORS', 'sUgLaserSight'],
+  ['focus', 'FOCUS RINGS', 'sUgZen'],
   ['favicons', 'TINT ICONS', 'sUgAlchemy'],
   ['downloads', 'DOWNLOADS', 'sUgGemAttractor'],
+  ['gameover', 'GAME OVER', 'sUgRIP'],
+  ['groups', 'TAB GROUPS', 'sUgChainReaction'],
+  ['gems', 'GEM COUNT', 'sUgFortune'],
   ['clock24', '24H CLOCK', 'sUgTime'],
 ];
 

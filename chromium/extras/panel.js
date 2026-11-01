@@ -1,25 +1,30 @@
 // The side panel, as the game's shop: the sign, the shopkeeper behind his
-// counter, and three aisles of goods (bookmarks, history and downloads) on a
-// shelf of rows, priced in gems where a price means something: a folder's
-// size, a page's visits. A still, like the new tab page: it redraws only for
-// input, the caret and the goods changing.
-// Keys: left and right change aisle, up and down choose, Enter opens (Shift:
-// in a background tab, or shows a download in its folder), Backspace leaves a
-// folder, / or typing searches the aisle.
+// counter with the description box the shop shows for the item you look at,
+// and three aisles of goods (bookmarks, history and downloads) on a shelf of
+// rows, priced in gems where a price means something: a folder's size, a
+// page's visits. A still, like the new tab page: it redraws only for input,
+// the caret and the goods changing.
+// Keys: left and right change aisle, up and down choose (Home, End, Page Up
+// and Page Down jump), Enter opens (Shift: in a background tab, or shows a
+// download in its folder), Backspace leaves a folder, / or typing searches
+// the aisle and Enter there opens the first find.
 
 import { loadArt, fitCanvas, Sounds } from './lib/pixel.js';
 import { getSettings } from './lib/settings.js';
 import { favicon } from './lib/favicon.js';
 
 const SCALE = 2;
-const ROW = 18;
-const AISLE_Y = 47;
-const SEARCH_Y = 60;
-const LIST_Y = 86;
+const ROW = 20;
+const DESC = { y: 4, h: 42 };
+const FLOOR = 49;
+const AISLE_Y = 56;
+const SEARCH_Y = 66;
+const LIST_Y = 92;
 const FOOT = 14;
 const GAUGE = 8;
 const AISLES = ['BOOKMARKS', 'HISTORY', 'DOWNLOADS'];
 const DAY = 864e5;
+const SMALL = { font: 'small' };
 
 const canvas = document.getElementById('screen');
 const search = document.getElementById('search');
@@ -51,6 +56,11 @@ function host(url) {
   }
 }
 
+const bare = (url) => url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+const lang = navigator.language;
+const clock = new Intl.DateTimeFormat(lang, { hour: '2-digit', minute: '2-digit', hour12: !settings.clock24 });
+const date = new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short' });
+
 // A folder's icon: one of the upgrades, the same one for the same folder.
 function upgrade(id) {
   let h = 0;
@@ -58,11 +68,20 @@ function upgrade(id) {
   return art.upgrades[h % art.upgrades.length];
 }
 
-const link = (n) => ({ kind: 'link', title: n.title || host(n.url), url: n.url });
-const shelf = (n) => ({
-  kind: 'folder', id: n.id, title: n.title || 'FOLDER', icon: upgrade(n.id),
-  price: String(n.children?.length ?? 0), gem: true,
-});
+function count(n, one, many) {
+  return n ? `${n} ${n === 1 ? one : many}` : '';
+}
+
+const link = (n) => ({ kind: 'link', title: n.title || host(n.url), url: n.url, sub: bare(n.url) });
+function shelf(n) {
+  const kids = n.children ?? [];
+  const links = kids.filter((k) => k.url).length;
+  return {
+    kind: 'folder', id: n.id, title: n.title || 'FOLDER', icon: upgrade(n.id),
+    price: String(kids.length), gem: true,
+    sub: [count(links, 'link', 'links'), count(kids.length - links, 'folder', 'folders')].filter(Boolean).join(', ') || 'empty',
+  };
+}
 
 async function bookmarks(query) {
   if (query) return (await chrome.bookmarks.search(query)).filter((n) => n.url).slice(0, 200).map(link);
@@ -82,10 +101,10 @@ async function bookmarks(query) {
     nodes = [...(bar.children ?? []), ...rest.filter((n) => n.children?.length)];
   }
   const rows = nodes.map((n) => (n.url ? link(n) : shelf(n)));
-  return here ? [{ kind: 'back', title: 'BACK' }, ...rows] : rows;
+  const up = path.at(-2)?.title ?? 'bookmarks bar';
+  return here ? [{ kind: 'back', title: 'BACK', sub: `to ${up}` }, ...rows] : rows;
 }
 
-const lang = navigator.language;
 function dayName(time) {
   const days = Math.floor(new Date().setHours(24, 0, 0, 0) / DAY) - Math.floor(new Date(time).setHours(24, 0, 0, 0) / DAY);
   if (days === 0) return 'TODAY';
@@ -105,7 +124,10 @@ async function history(query) {
     if (h.url.startsWith(own)) continue;
     const name = dayName(h.lastVisitTime);
     if (name !== day) rows.push({ kind: 'header', title: (day = name) });
-    rows.push({ kind: 'link', title: h.title || host(h.url), url: h.url, price: String(h.visitCount), gem: true });
+    rows.push({
+      kind: 'link', title: h.title || host(h.url), url: h.url, price: String(h.visitCount), gem: true,
+      sub: `${clock.format(h.lastVisitTime)}  ${bare(h.url)}`,
+    });
   }
   return rows;
 }
@@ -129,6 +151,7 @@ async function downloads(query) {
   return found.map((d) => {
     const done = d.state === 'complete' && d.exists;
     const going = d.state === 'in_progress';
+    const started = new Date(d.startTime);
     return {
       kind: 'download', id: d.id, title: d.filename.split('/').pop() || host(d.url), done,
       resume: d.state === 'interrupted' && d.canResume,
@@ -136,6 +159,8 @@ async function downloads(query) {
       price: going
         ? d.totalBytes > 0 ? `${Math.floor((100 * d.bytesReceived) / d.totalBytes)}%` : size(d.bytesReceived)
         : done ? size(d.fileSize) : d.state === 'complete' ? 'GONE' : 'LOST',
+      sub: `${date.format(started)} ${clock.format(started)}  ${host(d.finalUrl || d.url)}`,
+      where: d.filename || d.url,
     };
   });
 }
@@ -166,7 +191,7 @@ async function reload(keep = false) {
 }
 
 // Goods change under the panel: bookmarks edited, pages visited, downloads
-// moving. Refresh the aisle on show, keeping the place in it.
+// moving. Refresh the aisle, keeping the place in it.
 let pending = 0;
 function changed(which) {
   if (which !== aisle) return;
@@ -184,6 +209,7 @@ function layout() {
   const { ctx, w, h } = fitCanvas(canvas, SCALE);
   view = {
     ctx, w, h, cx: Math.floor(w / 2),
+    desc: { x: 32, y: DESC.y, w: Math.max(40, w - 32 - 42), h: DESC.h },
     search: { x: 6, y: SEARCH_Y, w: w - 12, h: 20 },
     list: { y: LIST_Y, h: Math.max(ROW, h - LIST_Y - FOOT) },
   };
@@ -207,23 +233,38 @@ function reveal(i) {
 // ---- drawing ------------------------------------------------------------
 
 // The sign hanging on the left, the keeper behind his counter on the right,
-// his greeting between them, all on the shop's floor.
+// and between them the shop's description box: the chosen item in full, or
+// the keeper's greeting. All on the shop's floor.
 function shop(ctx, v) {
-  art.place(ctx, 'sprShopSign', 0, 6, 6);
-  const kx = v.w - 38;
-  art.place(ctx, 'sprShopKeeper', 0, kx, 10);
-  art.place(ctx, 'sprShopCounter', 0, kx + 6, 31);
-  art.sprite(ctx, 'sprShopMsg', 0, Math.floor((30 + kx) / 2), 22);
+  art.place(ctx, 'sprShopSign', 0, 4, 10);
+  const kx = v.w - 36;
+  art.place(ctx, 'sprShopKeeper', 0, kx, 14);
+  art.place(ctx, 'sprShopCounter', 0, kx + 6, 38);
   ctx.fillStyle = pal.foreground;
-  ctx.fillRect(0, 41, v.w, 1);
+  ctx.fillRect(0, FLOOR, v.w, 1);
+
+  const b = v.desc;
+  art.box(ctx, b.x, b.y, b.w, b.h);
+  const it = items[chosen];
+  const room = b.w - 12;
+  if (!it || it.kind === 'header') {
+    art.text(ctx, 'WELCOME!', b.x + b.w / 2, b.y + 12, 'fg', { align: 'center' });
+    art.text(ctx, art.fit(`${AISLES[aisle].toLowerCase()} aisle`, room, SMALL), b.x + b.w / 2, b.y + 26, 'dim', { align: 'center', ...SMALL });
+    return;
+  }
+  const detail = it.kind === 'download' ? it.where : it.kind === 'link' ? it.url : it.sub;
+  const lines = art.wrap(it.title, room, 2, SMALL);
+  lines.forEach((line, i) => art.text(ctx, line, b.x + 6, b.y + 5 + i * 9, 'fg', SMALL));
+  const rest = art.wrap(detail, room, 3 - lines.length, SMALL);
+  rest.forEach((line, i) => art.text(ctx, line, b.x + 6, b.y + 5 + (lines.length + i) * 9, 'dim', SMALL));
 }
 
 function aisleBar(ctx, v) {
   const label = AISLES[aisle];
   const lw = art.measure(label);
-  art.text(ctx, label, v.cx, AISLE_Y - 3, 'accent', { align: 'center' });
-  art.place(ctx, 'sprShopArrowS', 3, v.cx - Math.ceil(lw / 2) - 10, AISLE_Y - 1);
-  art.place(ctx, 'sprShopArrowS', 0, v.cx + Math.ceil(lw / 2) + 6, AISLE_Y - 1);
+  art.text(ctx, label, v.cx, AISLE_Y - 4, 'accent', { align: 'center' });
+  art.place(ctx, 'sprShopArrowS', 3, v.cx - Math.ceil(lw / 2) - 10, AISLE_Y - 2);
+  art.place(ctx, 'sprShopArrowS', 0, v.cx + Math.ceil(lw / 2) + 6, AISLE_Y - 2);
 }
 
 function searchBox(ctx, b) {
@@ -267,6 +308,9 @@ function gauge(ctx, x, y, h, at, size) {
   for (let r = ty + 5; r < ty + th - 1; r += 6) ctx.fillRect(x + 2, r, w - 4, 1);
 }
 
+// Each item on two lines in the small font: its name, and under it in the
+// dim ink where it leads (an address, a folder's contents, a download's day
+// and site); the price on the right of the first.
 function shelfRows(ctx, v) {
   const { y: top, h } = v.list;
   const full = items.length * ROW;
@@ -279,31 +323,33 @@ function shelfRows(ctx, v) {
     const y = top + i * ROW - scroll;
     if (y + ROW <= top || y >= top + h) return;
     if (it.kind === 'header') {
-      const tw = art.text(ctx, it.title, 8, y + 6, 'dim');
+      const tw = art.text(ctx, it.title, 8, y + 8, 'dim');
       ctx.fillStyle = pal.dark_foreground;
-      ctx.fillRect(12 + tw, y + 10, Math.max(0, right - 12 - tw), 1);
+      ctx.fillRect(12 + tw, y + 12, Math.max(0, right - 12 - tw), 1);
       return;
     }
     const on = i === chosen;
-    if (on) art.sprite(ctx, 'sprSelectArrow', 0, 5, y + ROW / 2);
-    if (it.kind === 'back') art.place(ctx, 'sprShopArrowS', 3, 16, y + 6);
-    else if (it.icon) art.sprite(ctx, it.icon, 0, 18, y + ROW / 2);
+    const mid = y + ROW / 2;
+    if (on) art.sprite(ctx, 'sprSelectArrow', 0, 5, mid);
+    if (it.kind === 'back') art.place(ctx, 'sprShopArrowS', 3, 16, mid - 3);
+    else if (it.icon) art.sprite(ctx, it.icon, 0, 18, mid);
     else {
       const icon = icons.get(it.url);
-      if (icon) ctx.drawImage(icon, 10, y + 1);
-      else art.sprite(ctx, 'sprGemS', 0, 18, y + ROW / 2);
+      if (icon) ctx.drawImage(icon, 10, mid - 8);
+      else art.sprite(ctx, 'sprGemS', 0, 18, mid);
     }
     let pw = 0;
     if (it.price) {
-      pw = art.text(ctx, it.price, right, y + 4, on ? 'accent' : 'dim', { align: 'right' });
+      pw = art.text(ctx, it.price, right, y + 3, on ? 'accent' : 'dim', { align: 'right', ...SMALL });
       if (it.gem) {
-        art.sprite(ctx, 'sprGemS', 0, right - pw - 6, y + ROW / 2);
+        art.sprite(ctx, 'sprGemS', 0, right - pw - 6, y + 6);
         pw += 11;
       }
-      pw += 6;
+      pw += 4;
     }
     const ink = on ? 'accent' : it.kind === 'download' && !it.done ? 'dim' : 'fg';
-    art.text(ctx, art.fit(it.title, right - 30 - pw), 30, y + 4, ink);
+    art.text(ctx, art.fit(it.title, right - 30 - pw, SMALL), 30, y + 2, ink, SMALL);
+    if (it.sub) art.text(ctx, art.fit(it.sub, right - 30, SMALL), 30, y + 11, 'dim', SMALL);
   });
   ctx.restore();
   if (!items.length) {
@@ -349,7 +395,7 @@ function describe() {
   nav.replaceChildren(...items.filter((it) => it.kind !== 'header').map((it) => {
     const a = document.createElement('a');
     a.href = it.url ?? '#';
-    a.textContent = it.kind === 'folder' ? `folder ${it.title}, ${it.price} items` : it.title;
+    a.textContent = it.kind === 'folder' ? `folder ${it.title}, ${it.sub}` : it.title;
     a.addEventListener('click', (e) => {
       e.preventDefault();
       open(it, false);
@@ -360,6 +406,8 @@ function describe() {
 
 // ---- input --------------------------------------------------------------
 
+const pick = (i) => i >= 0 && i < items.length && items[i].kind !== 'header';
+
 function choose(i) {
   if (i === chosen) return;
   chosen = i;
@@ -367,10 +415,17 @@ function choose(i) {
   draw();
 }
 
-function move(step) {
-  let i = chosen;
-  do i += step; while (i >= 0 && i < items.length && items[i].kind === 'header');
-  if (i < 0 || i >= items.length) return;
+// Step `step` rows from the chosen one (or from an end), on to the nearest
+// item in that direction, stopping at the shelf's ends.
+function move(step, from = chosen) {
+  let i = Math.max(-1, Math.min(items.length, from + step));
+  const dir = Math.sign(step) || 1;
+  while (i >= 0 && i < items.length && !pick(i)) i += dir;
+  if (!pick(i)) {
+    i = Math.max(0, Math.min(items.length - 1, from + step));
+    while (i >= 0 && i < items.length && !pick(i)) i -= dir;
+  }
+  if (!pick(i)) return;
   reveal(i);
   choose(i);
   draw();
@@ -429,21 +484,28 @@ addEventListener('keydown', (e) => {
         search.value = '';
         reload();
       } else canvas.focus();
-    } else if (e.key === 'ArrowDown' || e.key === 'Enter') {
+    } else if (e.key === 'ArrowDown') {
       canvas.focus();
-      if (e.key === 'Enter' && chosen < 0) move(1);
-      else if (e.key === 'Enter') open(items[chosen], e.shiftKey);
-      else move(1);
+      move(1);
+      e.preventDefault();
+    } else if (e.key === 'Enter') {
+      if (!pick(chosen)) move(1, -1);
+      if (pick(chosen)) open(items[chosen], e.shiftKey);
       e.preventDefault();
     }
     return;
   }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const page = Math.max(1, Math.floor(view.list.h / ROW) - 1);
   if (e.key === 'ArrowDown') move(1);
   else if (e.key === 'ArrowUp') move(-1);
+  else if (e.key === 'PageDown') move(page);
+  else if (e.key === 'PageUp') move(-page);
+  else if (e.key === 'Home') move(1, -1);
+  else if (e.key === 'End') move(-1, items.length);
   else if (e.key === 'ArrowLeft') switchAisle(-1);
   else if (e.key === 'ArrowRight') switchAisle(1);
-  else if (e.key === 'Enter' && chosen >= 0) open(items[chosen], e.shiftKey);
+  else if (e.key === 'Enter' && pick(chosen)) open(items[chosen], e.shiftKey);
   else if (e.key === 'Backspace') back();
   else if (e.key === '/' || e.key.length === 1) {
     if (e.key === '/') e.preventDefault();
@@ -470,17 +532,33 @@ search.addEventListener('blur', () => {
   draw();
 });
 
-// what the pointer is over: an item's index, 'left'/'right' on the aisle bar
+// What the pointer is over: an item's index, 'left'/'right' on the aisle bar,
+// or 'gauge' on the scrollbar.
 function hit(e) {
   const x = e.offsetX / SCALE, y = e.offsetY / SCALE;
   if (y >= AISLE_Y - 6 && y < AISLE_Y + 8) return x < view.cx ? 'left' : 'right';
   const { y: top, h } = view.list;
   if (y < top || y >= top + h) return null;
+  if (items.length * ROW > h && x >= view.w - GAUGE - 4) return 'gauge';
   const i = Math.floor((y - top + scroll) / ROW);
-  return i < items.length && items[i].kind !== 'header' ? i : null;
+  return pick(i) ? i : null;
 }
 
+// Clicking or dragging on the gauge puts that part of the shelf in view.
+function scrub(e) {
+  const { y: top, h } = view.list;
+  const at = Math.max(0, Math.min(1, (e.offsetY / SCALE - top) / h));
+  scroll = at * (items.length * ROW - h);
+  clampScroll();
+  draw();
+}
+
+let scrubbing = false;
 canvas.addEventListener('mousemove', (e) => {
+  if (scrubbing) {
+    scrub(e);
+    return;
+  }
   const at = hit(e);
   canvas.style.cursor = art.cursor(at === null ? 'arrow' : 'hand', settings.cursors);
   if (typeof at === 'number') choose(at);
@@ -491,9 +569,13 @@ canvas.addEventListener('mousedown', (e) => {
   if (at === null || e.button > 1) return;
   e.preventDefault();
   canvas.focus();
-  if (at === 'left' || at === 'right') switchAisle(at === 'left' ? -1 : 1);
+  if (at === 'gauge') {
+    scrubbing = true;
+    scrub(e);
+  } else if (at === 'left' || at === 'right') switchAisle(at === 'left' ? -1 : 1);
   else open(items[at], e.button === 1 || e.ctrlKey || e.metaKey || e.shiftKey);
 });
+addEventListener('mouseup', () => (scrubbing = false));
 
 canvas.addEventListener('wheel', (e) => {
   scroll += e.deltaMode ? Math.sign(e.deltaY) * ROW * 3 : e.deltaY / SCALE;

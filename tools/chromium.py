@@ -174,9 +174,9 @@ def build_theme():
 SPRITES = {
     'sprBgWell': 1, 'sprTitle': 1, 'sprPlayerAir': 5, 'sprGemS': 1, 'sprGemM': 1,
     'sprTextBox': 1, 'sprSelectArrow': 1, 'sprStCursor': 1,
-    'sprUgSlot': 2, 'sprLocked': 1, 'sprHudLifeHeart': 1, 'sprPauseIcons': 3, 'sprDeathIcons': 1,
+    'sprUgSlot': 2, 'sprLocked': 1, 'sprHudLifeHeart': 1, 'sprPauseIcons': 3, 'sprDeathIcons': 2,
     'sprShopSign': 1, 'sprShopKeeper': 1, 'sprShopCounter': 1, 'sprShopMsg': 1, 'sprShopArrowS': 4,
-    'sprGemsack': 1, 'sprSkullCalm': 1,
+    'sprGemsack': 1, 'sprSkullCalm': 1, 'sprGrave': 1, 'sprResultStuff': 8,
 }
 # The upgrades' small icons (their second frame, 12 px), each also as a dim
 # silhouette ('...Off') for switches that are off. The popup gives one to each
@@ -188,9 +188,23 @@ UPGRADES = [
     'sUgZen', 'sUgRIP', 'sUgChainReaction', 'sUgYouth', 'sUgMembersCard', 'sUgBlastMod', 'sUgDecoy',
     'sUgEngineering', 'sUgGemPop', 'sUgTime', 'sUgRocket', 'sUgSuperBtry', 'sUgLess', 'sUgFortune', 'sUgSafety',
 ]
-# Latin-1 and the two punctuation marks the game's font adds; enough for
-# Portuguese dates and most page titles. Anything else falls back to '?'.
-CHARS = [chr(c) for c in range(32, 127)] + [chr(c) for c in range(160, 256)] + ['–', '…']
+# The game's fonts the pages draw with, and the characters baked of each:
+# font0 in Latin-1 and the two punctuation marks the game adds, enough for
+# Portuguese dates and most page titles; fontSmall, half as wide, for long
+# lines like the shop's, in ASCII (the pages drop accents to fit it). Anything
+# else falls back to '?'.
+FONTS = {
+    'font0': [chr(c) for c in range(32, 127)] + [chr(c) for c in range(160, 256)] + ['–', '…'],
+    'small': [chr(c) for c in range(32, 127)],
+}
+GAME_FONTS = {'font0': 'font0', 'small': 'fontSmall'}
+# Chromium's tab group colors, roughly as it draws them on a dark frame; new
+# groups take the one nearest the accent.
+GROUP_COLORS = {
+    'grey': (154, 160, 166), 'blue': (138, 180, 248), 'red': (242, 139, 130), 'yellow': (253, 214, 99),
+    'green': (129, 201, 149), 'pink': (255, 139, 203), 'purple': (197, 138, 249), 'cyan': (120, 217, 236),
+    'orange': (252, 173, 112),
+}
 SOUNDS = {'move': 'sfxShopScroll', 'pick': 'sfxUiMenu_Select_Confirm', 'back': 'sfxShopBack', 'gem': 'sfxGemGet'}
 
 # The page cursors, drawn here in the game's way (a light body in a dark rim)
@@ -313,26 +327,29 @@ def build_art():
     x, y = atlas.add(part)
     sprites['sprTitleStroke'] = [[int(x), int(y), part.shape[1], part.shape[0], int(dx - ox), int(dy - oy)]]
 
-    # The game's font, baked in each color the pages use: its glyphs are a
+    # The game's fonts, baked in each color the pages use: their glyphs are a
     # bright core and a dark rim, which keeps the field color.
-    font = glyphs('font0')
     inks = {'fg': FG, 'accent': ACCENT, 'dim': k['dark_foreground'], 'field': k['darker_background']}
-    chars = {}
-    for ch in CHARS:
-        gl = font.get(ch)
-        if gl is None:
-            continue
-        entry = {'shift': gl['shift'], 'offset': gl['offset'], 'w': gl['w'], 'h': gl['h'], 'at': {}}
-        if gl['w'] and gl['h']:
-            px = np.frombuffer(bytes(gl['pixels']), np.uint8).reshape(gl['h'], gl['w'], 4)
-            on = px[..., 3] > 0
-            bright = on & (px[..., 0] > 128)
-            for ink, color in inks.items():
-                img = np.zeros_like(px)
-                img[bright] = (*color, 255)
-                img[on & ~bright] = (*k['darker_background'], 255)
-                entry['at'][ink] = list(map(int, atlas.add(img)))
-        chars[ch] = entry
+    fonts = {}
+    for key, wanted in FONTS.items():
+        font = glyphs(GAME_FONTS[key])
+        chars = {}
+        for ch in wanted:
+            gl = font.get(ch)
+            if gl is None:
+                continue
+            entry = {'shift': gl['shift'], 'offset': gl['offset'], 'w': gl['w'], 'h': gl['h'], 'at': {}}
+            if gl['w'] and gl['h']:
+                px = np.frombuffer(bytes(gl['pixels']), np.uint8).reshape(gl['h'], gl['w'], 4)
+                on = px[..., 3] > 0
+                bright = on & (px[..., 0] > 128)
+                for ink, color in inks.items():
+                    img = np.zeros_like(px)
+                    img[bright] = (*color, 255)
+                    img[on & ~bright] = (*k['darker_background'], 255)
+                    entry['at'][ink] = list(map(int, atlas.add(img)))
+            chars[ch] = entry
+        fonts[key] = {'height': max(c['h'] for c in chars.values()), 'chars': chars}
 
     sheet = atlas.image()
     png(dest / 'atlas.png', sheet)
@@ -340,7 +357,7 @@ def build_art():
     (dest / 'atlas.json').write_text(json.dumps({
         'sprites': sprites,
         'upgrades': UPGRADES,
-        'font': {'height': 10, 'chars': chars},
+        'fonts': fonts,
     }, separators=(',', ':')))
     # What the companion injects into every site, part by part while each is
     # on: a stylesheet, and for the cursors also a script (checked in, the
@@ -353,7 +370,9 @@ def build_art():
             'scrollbars': {'css': [f'art/tint-{NAME}-scrollbars.css']},
             'selection': {'css': [f'art/tint-{NAME}-selection.css']},
             'cursors': {'css': [f'art/tint-{NAME}-cursors.css'], 'js': ['cursors.js']},
+            'focus': {'css': [f'art/tint-{NAME}-focus.css']},
         },
+        'groupColor': min(GROUP_COLORS, key=lambda c: sum((a - b) ** 2 for a, b in zip(GROUP_COLORS[c], ACCENT))),
         # the companion's own pages wear the same cursors (content scripts
         # never reach extension pages)
         'cursors': {
@@ -437,6 +456,10 @@ def build_art():
         'selection': f"""
 ::selection {{ background-color: {p['accent']}; color: {p['bright_foreground']}; }}
 :root {{ caret-color: {p['accent']}; }}
+""",
+        # keyboard focus on pages, in the accent where Chromium draws blue
+        'focus': f"""
+:focus-visible {{ outline: 2px solid {p['accent']} !important; outline-offset: 2px !important; }}
 """,
         # cursors.js marks the element under the pointer when the page asks it
         # for an arrow, a hand or an I-beam of its own, for the last rules.
