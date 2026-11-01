@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""fastfetch.txt: the fastfetch logo, the hero falling (sprPlayerAir, as in
-2-well.png), encoded as truecolor half-blocks at 3x.
+"""fastfetch.txt: the fastfetch logo, the hero floating down on the heart
+balloon as in 1-clouds.png (sprHeartBalloon over sprPlayerAirHands frame 1, on
+a one-pixel string), encoded as truecolor half-blocks at 2x.
 
     python3 -I tools/fastfetch.py
 
@@ -13,16 +14,36 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import numpy as np  # noqa: E402
-from compose import Canvas  # noqa: E402
-from palette import BG  # noqa: E402
+from compose import Canvas, frame  # noqa: E402
+from palette import BG, FG  # noqa: E402
 
 THEME = Path(__file__).resolve().parent.parent
-SCALE = 3                    # ~42x23 cells, about the stock logo's size
+SCALE = 2
+STRING = 7                   # game pixels of string between balloon and hand
+
+
+def bbox(name, i=0):
+    """Drawn extent of a frame relative to its origin: x0, y0, x1, y1."""
+    img, (ox, oy) = frame(name, i)
+    ys, xs = np.nonzero(img[..., 3])
+    return xs.min() - ox, ys.min() - oy, xs.max() - ox, ys.max() - oy
 
 
 def draw():
-    c = Canvas(32, 32)
-    c.blit('sprPlayerAir', 16, 16, 0)
+    c = Canvas(48, 64)
+    bx0, by0, bx1, by1 = bbox('sprHeartBalloon')
+    cx = 24                                  # the string's column
+    top = 1 - by0
+    c.blit('sprHeartBalloon', cx - (bx0 + bx1) // 2, top, 0)
+    knot = top + by1 + 1
+    # the hero holds the string in the raised hand: the topmost pixel of the
+    # pose, so line that column up under the balloon
+    img, (ox, oy) = frame('sprPlayerAirHands', 1)
+    ys, xs = np.nonzero(img[..., 3])
+    hand = xs[ys == ys.min()].mean()
+    hero_top = knot + STRING
+    c.blit('sprPlayerAirHands', cx - int(round(hand - ox)), hero_top - (ys.min() - oy), 1)
+    c.px[knot:hero_top, cx] = FG
     # the canvas starts as the theme background; anything still that color
     # is empty space (the sprites' black maps to it too)
     on = np.any(c.px != np.array(BG, np.uint8), axis=2)
